@@ -5,6 +5,7 @@ final class MediaLibraryItemCell: UITableViewCell {
     static let reuseIdentifier = "MediaLibraryItemCell"
 
     private let posterView = UIImageView()
+    private var usesPosterPlaceholder = false
     private let titleLabel = UILabel()
     private let statusLabel = UILabel()
     private let chipScroll = UIScrollView()
@@ -15,7 +16,10 @@ final class MediaLibraryItemCell: UITableViewCell {
 
         posterView.contentMode = .scaleAspectFill
         posterView.clipsToBounds = true
-        posterView.layer.cornerRadius = 8
+        posterView.layer.cornerRadius = 12
+        if #available(iOS 13.0, *) {
+            posterView.layer.cornerCurve = .continuous
+        }
         posterView.backgroundColor = UIColor.secondarySystemFill
 
         titleLabel.font = TMETheme.Fonts.titleSemibold(16)
@@ -59,14 +63,17 @@ final class MediaLibraryItemCell: UITableViewCell {
         if let url = MediaLibraryStore.coverImageURL(fileName: item.coverFileName),
            let data = try? Data(contentsOf: url),
            let img = UIImage(data: data) {
+            usesPosterPlaceholder = false
             posterView.contentMode = .scaleAspectFill
             posterView.image = img
+            posterView.backgroundColor = .clear
+            posterView.tintColor = nil
         } else {
+            usesPosterPlaceholder = true
             posterView.contentMode = .center
-            posterView.backgroundColor = UIColor.secondarySystemFill
             let config = UIImage.SymbolConfiguration(pointSize: 28, weight: .medium)
             posterView.image = UIImage(systemName: symbolForKind(item.kind), withConfiguration: config)
-            posterView.tintColor = .tertiaryLabel
+            applyPosterPlaceholderColors()
         }
 
         chipStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
@@ -74,6 +81,23 @@ final class MediaLibraryItemCell: UITableViewCell {
             chipStack.addArrangedSubview(ChipPill(text: "#" + tag))
         }
         chipScroll.isHidden = item.hashtags.isEmpty
+    }
+
+    func refreshPlaceholderIfNeeded() {
+        guard usesPosterPlaceholder else { return }
+        applyPosterPlaceholderColors()
+    }
+
+    private func applyPosterPlaceholderColors() {
+        posterView.tintColor = MediaLibraryHeaderBannerColor.posterPlaceholderTint(for: traitCollection)
+        posterView.backgroundColor = MediaLibraryHeaderBannerColor.posterPlaceholderFill(for: traitCollection)
+    }
+
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        if usesPosterPlaceholder {
+            applyPosterPlaceholderColors()
+        }
     }
 
     private func symbolForKind(_ kind: MediaItemKind) -> String {
@@ -87,18 +111,18 @@ final class MediaLibraryItemCell: UITableViewCell {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        let side: CGFloat = 16
-        let posterW: CGFloat = 52
-        let posterH: CGFloat = 78
-        posterView.frame = CGRect(x: side, y: (contentView.bounds.height - posterH) / 2, width: posterW, height: posterH)
+        let margin: CGFloat = 16
+        let posterSide: CGFloat = 72
+        let topPad: CGFloat = 12
+        posterView.frame = CGRect(x: margin, y: topPad, width: posterSide, height: posterSide)
 
         let textX = posterView.frame.maxX + 12
-        let textW = max(0, contentView.bounds.width - textX - side - 28)
-        titleLabel.frame = CGRect(x: textX, y: 10, width: textW, height: 40)
+        let textW = max(0, contentView.bounds.width - textX - margin - 28)
+        titleLabel.frame = CGRect(x: textX, y: topPad, width: textW, height: 40)
         statusLabel.frame = CGRect(x: textX, y: titleLabel.frame.maxY + 2, width: textW, height: 18)
 
-        let chipY = statusLabel.frame.maxY + 6
-        let chipH: CGFloat = 28
+        let chipH: CGFloat = chipScroll.isHidden ? 0 : 28
+        let chipY = statusLabel.frame.maxY + (chipScroll.isHidden ? 0 : 6)
         chipScroll.frame = CGRect(x: textX, y: chipY, width: textW, height: chipH)
         let fit = chipStack.systemLayoutSizeFitting(
             CGSize(width: UIView.layoutFittingExpandedSize.width, height: chipH),
@@ -111,8 +135,11 @@ final class MediaLibraryItemCell: UITableViewCell {
 
     override func prepareForReuse() {
         super.prepareForReuse()
+        usesPosterPlaceholder = false
         posterView.image = nil
         posterView.contentMode = .scaleAspectFill
+        posterView.tintColor = nil
+        posterView.backgroundColor = UIColor.secondarySystemFill
     }
 }
 

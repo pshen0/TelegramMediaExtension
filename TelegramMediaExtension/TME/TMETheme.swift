@@ -11,8 +11,7 @@ enum TMETheme {
         static let secondaryText = UIColor.secondaryLabel
         /// Поле поиска «как в контактах» (светло-серый фон).
         static let searchFieldBackground = UIColor.secondarySystemFill
-        /// Лёгкий разделитель строк списка.
-        static let listSeparator = UIColor.separator.withAlphaComponent(0.55)
+        static let listSeparator = UIColor.separator.withAlphaComponent(0.28)
     }
     
     enum Fonts {

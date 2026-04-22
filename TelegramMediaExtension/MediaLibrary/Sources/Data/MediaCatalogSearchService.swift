@@ -1,6 +1,6 @@
 import Foundation
 
-/// Результат «внешнего» каталога (заглушка до подключения реального API).
+/// Результат внешнего каталога (TMDB при наличии ключа + локальная заглушка для книг/музыки).
 struct MediaCatalogCandidate: Hashable, Identifiable {
     let id: String
     let kind: MediaItemKind
@@ -10,18 +10,38 @@ struct MediaCatalogCandidate: Hashable, Identifiable {
     let rating: Double?
     let synopsis: String
 
-    func makeMediaItem() -> MediaItem {
-        MediaItem(
+    func makeMediaItem(detail: TMDBClient.DetailMetadata? = nil) -> MediaItem {
+        let mergedSyn: String = {
+            if let s = detail?.synopsis?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty {
+                return s
+            }
+            return synopsis.trimmingCharacters(in: .whitespacesAndNewlines)
+        }()
+        var progress = MediaProgress()
+        if kind == .series {
+            if let t = detail?.totalEpisodes, t > 0 {
+                progress.total = t
+            }
+            if detail?.numberOfSeasons != nil {
+                progress.season = 1
+            }
+        }
+        if kind == .film, let run = detail?.runtimeMinutes, run > 0 {
+            progress.current = 0
+            progress.total = run
+        }
+        let synOpt = mergedSyn.isEmpty ? nil : mergedSyn
+        return MediaItem(
             kind: kind,
             title: title,
             status: .planned,
-            progress: MediaProgress(),
+            progress: progress,
             notes: "",
             hashtags: [],
-            year: year,
-            genre: genre,
-            rating: rating,
-            synopsis: synopsis,
+            year: detail?.year ?? year,
+            genre: detail?.genre ?? genre,
+            rating: detail?.rating ?? rating,
+            synopsis: synOpt,
             coverFileName: nil,
             catalogSourceID: id,
             isManuallyCreated: false
@@ -30,16 +50,35 @@ struct MediaCatalogCandidate: Hashable, Identifiable {
 }
 
 enum MediaCatalogSearchService {
-    /// Поиск по заглушечному каталогу (имитация сетевой задержки).
+    /// Поиск: при `TMDBAPIKey` в Info.plist — живой TMDB; иначе только мок + книги/музыка из заглушки.
     static func search(query: String) async -> [MediaCatalogCandidate] {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard q.count >= 2 else { return [] }
-        try? await Task.sleep(nanoseconds: 350_000_000)
-        return mockCatalog.filter { cand in
+        try? await Task.sleep(nanoseconds: 220_000_000)
+
+        var remote: [MediaCatalogCandidate] = []
+        if TMDBClient.isConfigured {
+            do {
+                remote = try await TMDBClient.searchMulti(query: query)
+            } catch {
+                remote = []
+            }
+        }
+
+        let local = mockCatalog.filter { cand in
             cand.title.lowercased().contains(q)
                 || (cand.genre?.lowercased().contains(q) ?? false)
                 || cand.synopsis.lowercased().contains(q)
         }
+
+        var seen = Set<String>()
+        var merged: [MediaCatalogCandidate] = []
+        for c in remote + local {
+            if seen.insert(c.id).inserted {
+                merged.append(c)
+            }
+        }
+        return merged
     }
 
     private static let mockCatalog: [MediaCatalogCandidate] = [

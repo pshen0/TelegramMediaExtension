@@ -1,12 +1,18 @@
 import UIKit
 
-/// Предпросмотр объекта из каталога перед добавлением в медиатеку (ТЗ п.3).
+/// Предпросмотр объекта из каталога; для TMDB подгружает детали (серии, год, жанр, хронометраж) и открывает форму редактора с предзаполнением.
 final class MediaCatalogPreviewViewController: UIViewController {
     private let candidate: MediaCatalogCandidate
     weak var addFlowCoordinator: AddToMediaLibraryViewController?
 
     private let scroll = UIScrollView()
     private let stack = UIStackView()
+    private let metaLabel = UILabel()
+    private let synopsisLabel = UILabel()
+    private let hintLabel = UILabel()
+    private let addButton = UIButton(type: .system)
+
+    private var loadedDetail: TMDBClient.DetailMetadata?
 
     init(candidate: MediaCatalogCandidate) {
         self.candidate = candidate
@@ -33,28 +39,27 @@ final class MediaCatalogPreviewViewController: UIViewController {
         kindBadge.font = TMETheme.Fonts.body(13)
         kindBadge.textColor = .secondaryLabel
 
-        let meta = UILabel()
-        meta.numberOfLines = 0
-        meta.font = TMETheme.Fonts.body(14)
-        meta.textColor = .secondaryLabel
-        var metaParts: [String] = []
-        if let y = candidate.year { metaParts.append(String(y)) }
-        if let g = candidate.genre, !g.isEmpty { metaParts.append(g) }
-        if let r = candidate.rating { metaParts.append(String(format: "★ %.1f/5", r)) }
-        meta.text = metaParts.joined(separator: " · ")
+        metaLabel.numberOfLines = 0
+        metaLabel.font = TMETheme.Fonts.body(14)
+        metaLabel.textColor = .secondaryLabel
 
-        let synopsis = UILabel()
-        synopsis.numberOfLines = 0
-        synopsis.font = TMETheme.Fonts.body(16)
-        synopsis.textColor = .label
-        synopsis.text = candidate.synopsis
+        synopsisLabel.numberOfLines = 0
+        synopsisLabel.font = TMETheme.Fonts.body(16)
+        synopsisLabel.textColor = .label
 
-        let addButton = UIButton(type: .system)
-        addButton.setTitle("Добавить в мою медиатеку", for: .normal)
+        hintLabel.numberOfLines = 0
+        hintLabel.font = TMETheme.Fonts.body(13)
+        hintLabel.textColor = .secondaryLabel
+        hintLabel.text = TMDBClient.isConfigured && candidate.id.hasPrefix("tmdb-")
+            ? "Подтягиваем описание и число серий из каталога TMDB…"
+            : nil
+        hintLabel.isHidden = hintLabel.text == nil
+
+        addButton.setTitle("Открыть форму с автозаполнением", for: .normal)
         addButton.titleLabel?.font = TMETheme.Fonts.titleSemibold(17)
         addButton.addTarget(self, action: #selector(addTapped), for: .touchUpInside)
 
-        [kindBadge, meta, synopsis, addButton].forEach {
+        [kindBadge, metaLabel, synopsisLabel, hintLabel, addButton].forEach {
             $0.translatesAutoresizingMaskIntoConstraints = false
             stack.addArrangedSubview($0)
         }
@@ -74,11 +79,63 @@ final class MediaCatalogPreviewViewController: UIViewController {
             stack.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor),
             stack.widthAnchor.constraint(equalTo: scroll.frameLayoutGuide.widthAnchor)
         ])
+
+        refreshTexts()
+        loadTMDBDetailIfNeeded()
+    }
+
+    private func loadTMDBDetailIfNeeded() {
+        guard TMDBClient.isConfigured, candidate.id.hasPrefix("tmdb-") else {
+            hintLabel.isHidden = true
+            return
+        }
+        Task {
+            let detail = await TMDBClient.fetchDetail(candidateId: candidate.id)
+            await MainActor.run {
+                self.loadedDetail = detail
+                self.hintLabel.isHidden = true
+                self.refreshTexts()
+            }
+        }
+    }
+
+    private func refreshTexts() {
+        let d = loadedDetail
+        var metaParts: [String] = []
+        let year = d?.year ?? candidate.year
+        if let y = year { metaParts.append(String(y)) }
+        let genre = d?.genre ?? candidate.genre
+        if let g = genre, !g.isEmpty { metaParts.append(g) }
+        let rating = d?.rating ?? candidate.rating
+        if let r = rating { metaParts.append(String(format: "★ %.1f/5", r)) }
+        if candidate.kind == .series {
+            if let ep = d?.totalEpisodes, ep > 0 {
+                metaParts.append("\(ep) эп.")
+            }
+            if let ss = d?.numberOfSeasons, ss > 0 {
+                metaParts.append("\(ss) сез.")
+            }
+        }
+        if candidate.kind == .film, let run = d?.runtimeMinutes, run > 0 {
+            metaParts.append("\(run) мин")
+        }
+        metaLabel.text = metaParts.joined(separator: " · ")
+
+        let syn: String = {
+            if let s = d?.synopsis?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty {
+                return s
+            }
+            return candidate.synopsis.trimmingCharacters(in: .whitespacesAndNewlines)
+        }()
+        synopsisLabel.text = syn.isEmpty ? "Нет описания." : syn
     }
 
     @objc private func addTapped() {
-        let item = candidate.makeMediaItem()
-        MediaLibraryStore.shared.upsert(item)
-        addFlowCoordinator?.popToLibraryList()
+        let item = candidate.makeMediaItem(detail: loadedDetail)
+        let editor = MediaItemEditorViewController(mode: .createPrefilled(item)) { [weak self] saved in
+            MediaLibraryStore.shared.upsert(saved)
+            self?.addFlowCoordinator?.popToLibraryList()
+        }
+        navigationController?.pushViewController(editor, animated: true)
     }
 }

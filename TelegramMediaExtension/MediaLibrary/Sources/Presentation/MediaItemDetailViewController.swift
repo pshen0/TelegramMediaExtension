@@ -10,7 +10,7 @@ final class MediaItemDetailViewController: UIViewController {
     private let titleLabel = UILabel()
     private let metaLabel = UILabel()
     private let synopsisLabel = UILabel()
-    private let statusSegment = UISegmentedControl(items: MediaWatchStatus.allCases.map(\.folderTabTitle))
+    private let statusTabs = MediaLibraryFolderTabsView(titles: MediaWatchStatus.allCases.map(\.folderTabTitle))
     private let progressLabel = UILabel()
     private let notesTitle = UILabel()
     private let notesBody = UILabel()
@@ -54,8 +54,11 @@ final class MediaItemDetailViewController: UIViewController {
         synopsisLabel.textColor = .label
         synopsisLabel.numberOfLines = 0
 
-        statusSegment.addTarget(self, action: #selector(statusChanged), for: .valueChanged)
-        statusSegment.apportionsSegmentWidthsByContent = true
+        statusTabs.onSelectionChange = { [weak self] idx in
+            guard let self, idx >= 0, idx < MediaWatchStatus.allCases.count else { return }
+            self.item.status = MediaWatchStatus.allCases[idx]
+            MediaLibraryStore.shared.upsert(self.item)
+        }
 
         progressLabel.font = TMETheme.Fonts.body(14)
         progressLabel.textColor = .secondaryLabel
@@ -96,12 +99,13 @@ final class MediaItemDetailViewController: UIViewController {
         ])
 
         [
-            posterView, titleLabel, metaLabel, synopsisLabel, statusSegment, progressLabel,
+            posterView, titleLabel, metaLabel, synopsisLabel, statusTabs, progressLabel,
             notesTitle, notesBody, tagsTitle, tagsBody
         ].forEach {
             $0.translatesAutoresizingMaskIntoConstraints = false
             stack.addArrangedSubview($0)
         }
+        statusTabs.heightAnchor.constraint(equalToConstant: MediaLibraryFolderTabsView.preferredHeight).isActive = true
 
         reloadFromStore()
     }
@@ -138,8 +142,8 @@ final class MediaItemDetailViewController: UIViewController {
             synopsisLabel.textColor = .tertiaryLabel
         }
 
-        if let idx = MediaWatchStatus.allCases.firstIndex(of: item.status) {
-            statusSegment.selectedSegmentIndex = idx
+        if let idx = MediaWatchStatus.allCases.firstIndex(of: item.status), statusTabs.selectedIndex != idx {
+            statusTabs.selectedIndex = idx
         }
 
         progressLabel.text = progressSummary()
@@ -176,13 +180,6 @@ final class MediaItemDetailViewController: UIViewController {
             parts.append(p)
         }
         return parts.isEmpty ? "Прогресс не задан" : parts.joined(separator: " · ")
-    }
-
-    @objc private func statusChanged() {
-        let idx = statusSegment.selectedSegmentIndex
-        guard idx >= 0, idx < MediaWatchStatus.allCases.count else { return }
-        item.status = MediaWatchStatus.allCases[idx]
-        MediaLibraryStore.shared.upsert(item)
     }
 
     @objc private func editTapped() {

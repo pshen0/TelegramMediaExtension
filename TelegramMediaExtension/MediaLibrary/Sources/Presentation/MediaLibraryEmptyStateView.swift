@@ -1,9 +1,18 @@
 import UIKit
 
-/// Пустая медиатека (ТЗ 4.1.5): иллюстрация + текст.
+/// Пустая медиатека: текст по центру полосы между нижним краем шапки (вкладки) и низом экрана.
 final class MediaLibraryEmptyStateView: UIView {
-    private let imageView = UIImageView()
     private let label = UILabel()
+
+    /// Нижняя граница блока вкладок в координатах этого view (обновляется при скролле шапки).
+    var headerBottomY: CGFloat = 0 {
+        didSet { setNeedsLayout() }
+    }
+
+    /// Отступ снизу до индикатора Home и т.п.
+    var bottomSafeInset: CGFloat = 0 {
+        didSet { setNeedsLayout() }
+    }
 
     enum Mode {
         case libraryEmpty
@@ -26,13 +35,6 @@ final class MediaLibraryEmptyStateView: UIView {
                 return "Попробуйте изменить поиск или фильтры."
             }
         }
-
-        var symbolName: String {
-            switch self {
-            case .libraryEmpty: return "rectangle.stack.badge.plus"
-            case .filteredEmpty: return "line.3.horizontal.decrease.circle"
-            }
-        }
     }
 
     var mode: Mode = .libraryEmpty {
@@ -43,16 +45,11 @@ final class MediaLibraryEmptyStateView: UIView {
         super.init(frame: frame)
         isUserInteractionEnabled = false
 
-        imageView.contentMode = .scaleAspectFit
-        imageView.tintColor = UIColor.secondaryLabel.withAlphaComponent(0.55)
-        imageView.preferredSymbolConfiguration = UIImage.SymbolConfiguration(pointSize: 72, weight: .light)
-
         label.numberOfLines = 0
         label.textAlignment = .center
         label.font = UIFont.systemFont(ofSize: 16, weight: .medium)
         label.textColor = .secondaryLabel
 
-        addSubview(imageView)
         addSubview(label)
         applyMode()
     }
@@ -62,17 +59,17 @@ final class MediaLibraryEmptyStateView: UIView {
     }
 
     private func applyMode() {
-        imageView.image = UIImage(systemName: mode.symbolName)
         label.text = mode.title + "\n\n" + mode.message
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        let w = bounds.width
-        let h = bounds.height
-        let top = max(0, h * 0.18)
-        imageView.frame = CGRect(x: (w - 100) / 2, y: top, width: 100, height: 100)
-        let labelY = imageView.frame.maxY + 20
-        label.frame = CGRect(x: 32, y: labelY, width: w - 64, height: h - labelY - 24)
+        let w = bounds.width - 64
+        let bandTop = min(headerBottomY, bounds.height - 80)
+        let bandBottom = bounds.height - bottomSafeInset
+        let bandH = max(60, bandBottom - bandTop)
+        let labelSize = label.sizeThatFits(CGSize(width: max(100, w), height: CGFloat.greatestFiniteMagnitude))
+        let y = bandTop + (bandH - labelSize.height) / 2
+        label.frame = CGRect(x: 32, y: max(bandTop + 8, y), width: max(100, w), height: labelSize.height)
     }
 }

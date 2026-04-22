@@ -24,19 +24,19 @@ enum MediaWatchStatus: String, Codable, CaseIterable {
 
     var title: String {
         switch self {
-        case .planned: return "Запланировано"
+        case .planned: return "В планах"
         case .inProgress: return "В процессе"
         case .completed: return "Завершено"
-        case .onHold: return "Отложено"
+        case .onHold: return "Пауза"
         }
     }
 
     /// Короткие подписи для сегментов в стиле папок в чатах (влезают в `UISegmentedControl`).
     var folderTabTitle: String {
         switch self {
-        case .planned: return "План"
-        case .inProgress: return "Сейчас"
-        case .completed: return "Готово"
+        case .planned: return "В планах"
+        case .inProgress: return "В процессе"
+        case .completed: return "Завершено"
         case .onHold: return "Пауза"
         }
     }

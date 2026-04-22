@@ -6,6 +6,8 @@ final class MediaLibraryGridViewController: UICollectionViewController {
 
     var itemsProvider: (() -> [MediaItem])?
 
+    private var bannerObserver: NSObjectProtocol?
+
     init() {
         let layout = UICollectionViewFlowLayout()
         layout.minimumInteritemSpacing = 12
@@ -18,12 +20,26 @@ final class MediaLibraryGridViewController: UICollectionViewController {
         fatalError("init(coder:) has not been implemented")
     }
 
+    deinit {
+        if let bannerObserver {
+            NotificationCenter.default.removeObserver(bannerObserver)
+        }
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
         title = "Сетка"
         collectionView.backgroundColor = .systemGroupedBackground
         collectionView.alwaysBounceVertical = true
         collectionView.register(MediaLibraryGridCell.self, forCellWithReuseIdentifier: Self.reuseId)
+
+        bannerObserver = NotificationCenter.default.addObserver(
+            forName: .mediaLibraryBannerColorDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.refreshVisiblePosterPlaceholders()
+        }
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -34,11 +50,22 @@ final class MediaLibraryGridViewController: UICollectionViewController {
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         guard let flow = collectionViewLayout as? UICollectionViewFlowLayout else { return }
-        let w = collectionView.bounds.width - flow.sectionInset.left - flow.sectionInset.right
+        let sideInset = flow.sectionInset.left + flow.sectionInset.right
+        let w = collectionView.bounds.width - sideInset
         let cols: CGFloat = 2
         let spacing = flow.minimumInteritemSpacing
         let cellW = floor((w - spacing) / cols)
-        flow.itemSize = CGSize(width: cellW, height: cellW * 1.45 + 36)
+        let posterInset: CGFloat = 6
+        let posterSide = cellW - posterInset * 2
+        let titleBlock: CGFloat = 44
+        let cellH = posterInset + posterSide + 6 + titleBlock + posterInset
+        flow.itemSize = CGSize(width: cellW, height: cellH)
+    }
+
+    private func refreshVisiblePosterPlaceholders() {
+        for cell in collectionView.visibleCells {
+            (cell as? MediaLibraryGridCell)?.refreshPlaceholderIfNeeded()
+        }
     }
 
     override func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
@@ -62,6 +89,7 @@ final class MediaLibraryGridViewController: UICollectionViewController {
 private final class MediaLibraryGridCell: UICollectionViewCell {
     private let poster = UIImageView()
     private let title = UILabel()
+    private var usesPosterPlaceholder = false
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -71,7 +99,11 @@ private final class MediaLibraryGridCell: UICollectionViewCell {
 
         poster.contentMode = .scaleAspectFill
         poster.clipsToBounds = true
-        poster.backgroundColor = .secondarySystemFill
+        poster.layer.cornerRadius = 12
+        if #available(iOS 13.0, *) {
+            poster.layer.cornerCurve = .continuous
+        }
+        poster.backgroundColor = UIColor.secondarySystemFill
 
         title.font = TMETheme.Fonts.body(13)
         title.textColor = .label
@@ -87,7 +119,7 @@ private final class MediaLibraryGridCell: UICollectionViewCell {
             poster.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 6),
             poster.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 6),
             poster.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -6),
-            poster.heightAnchor.constraint(equalTo: poster.widthAnchor, multiplier: 1.35),
+            poster.heightAnchor.constraint(equalTo: poster.widthAnchor, multiplier: 1),
             title.topAnchor.constraint(equalTo: poster.bottomAnchor, constant: 6),
             title.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 4),
             title.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -4),
@@ -104,20 +136,44 @@ private final class MediaLibraryGridCell: UICollectionViewCell {
         if let url = MediaLibraryStore.coverImageURL(fileName: item.coverFileName),
            let data = try? Data(contentsOf: url),
            let img = UIImage(data: data) {
+            usesPosterPlaceholder = false
             poster.image = img
             poster.contentMode = .scaleAspectFill
+            poster.backgroundColor = .clear
+            poster.tintColor = nil
         } else {
+            usesPosterPlaceholder = true
             poster.contentMode = .center
             let cfg = UIImage.SymbolConfiguration(pointSize: 32, weight: .medium)
             poster.image = UIImage(systemName: symbol(for: item.kind), withConfiguration: cfg)
-            poster.tintColor = .tertiaryLabel
+            applyPosterPlaceholderColors()
+        }
+    }
+
+    func refreshPlaceholderIfNeeded() {
+        guard usesPosterPlaceholder else { return }
+        applyPosterPlaceholderColors()
+    }
+
+    private func applyPosterPlaceholderColors() {
+        poster.tintColor = MediaLibraryHeaderBannerColor.posterPlaceholderTint(for: traitCollection)
+        poster.backgroundColor = MediaLibraryHeaderBannerColor.posterPlaceholderFill(for: traitCollection)
+    }
+
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        if usesPosterPlaceholder {
+            applyPosterPlaceholderColors()
         }
     }
 
     override func prepareForReuse() {
         super.prepareForReuse()
+        usesPosterPlaceholder = false
         poster.image = nil
         poster.contentMode = .scaleAspectFill
+        poster.tintColor = nil
+        poster.backgroundColor = UIColor.secondarySystemFill
     }
 
     private func symbol(for kind: MediaItemKind) -> String {

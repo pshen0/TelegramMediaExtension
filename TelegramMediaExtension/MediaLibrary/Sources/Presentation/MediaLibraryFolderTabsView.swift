@@ -1,6 +1,11 @@
 import UIKit
 
-/// Горизонтально прокручиваемые вкладки; при смене — краткий «glass», затем светло-серая плашка (как сегмент в основном клиенте).
+private enum TabPill {
+    static let cornerRadius: CGFloat = 11
+    static let pillFillTag = 9_090
+}
+
+/// Горизонтально прокручиваемые вкладки: выбранная — сплошная подложка, остальные — прозрачные подписи.
 final class MediaLibraryFolderTabsView: UIView {
     var selectedIndex: Int = 0 {
         didSet { updateSelection(animated: oldValue != selectedIndex) }
@@ -28,15 +33,16 @@ final class MediaLibraryFolderTabsView: UIView {
         scrollView.showsVerticalScrollIndicator = false
         scrollView.alwaysBounceHorizontal = true
         scrollView.delaysContentTouches = false
+        scrollView.backgroundColor = .clear
         addSubview(scrollView)
 
         for (index, title) in titles.enumerated() {
             let button = UIButton(type: .custom)
             button.setTitle(title, for: .normal)
-            button.titleLabel?.font = UIFont.systemFont(ofSize: 14, weight: .medium)
+            button.titleLabel?.font = UIFont.systemFont(ofSize: 13, weight: .semibold)
             button.titleLabel?.numberOfLines = 1
-            button.contentEdgeInsets = UIEdgeInsets(top: 5, left: 12, bottom: 5, right: 12)
-            button.layer.cornerRadius = 10
+            button.contentEdgeInsets = UIEdgeInsets(top: 4, left: 10, bottom: 4, right: 10)
+            button.layer.cornerRadius = TabPill.cornerRadius
             button.clipsToBounds = true
             button.tag = index
             button.addTarget(self, action: #selector(tabTapped(_:)), for: .touchUpInside)
@@ -52,15 +58,20 @@ final class MediaLibraryFolderTabsView: UIView {
         scrollView.frame = bounds
 
         let side: CGFloat = 10
-        let spacing: CGFloat = 8
+        let spacing: CGFloat = 6
         var x = side
         let h = bounds.height
         for button in tabButtons {
             button.sizeToFit()
             let fitting = button.sizeThatFits(CGSize(width: 1200, height: h))
-            let btnH = max(30, fitting.height)
+            let btnH = max(22, min(fitting.height, h - 2))
             let w = max(fitting.width, 44)
             button.frame = CGRect(x: x, y: floor((h - btnH) / 2), width: w, height: btnH)
+            button.layer.cornerRadius = TabPill.cornerRadius
+            if let pill = button.viewWithTag(TabPill.pillFillTag) {
+                pill.frame = button.bounds
+                pill.layer.cornerRadius = TabPill.cornerRadius
+            }
             x += w + spacing
         }
         scrollView.contentSize = CGSize(width: max(x + side - spacing, bounds.width + 1), height: h)
@@ -74,28 +85,26 @@ final class MediaLibraryFolderTabsView: UIView {
     }
 
     private func updateSelection(animated: Bool) {
-        for (i, button) in tabButtons.enumerated() {
+        for button in tabButtons {
             button.layer.removeAllAnimations()
-            button.subviews.compactMap { $0 as? UIVisualEffectView }.forEach { $0.removeFromSuperview() }
+            button.viewWithTag(TabPill.pillFillTag)?.removeFromSuperview()
         }
 
         for (i, button) in tabButtons.enumerated() {
             let selected = i == selectedIndex
             if selected {
-                let gray = selectedFill(for: button)
-                if animated {
-                    playGlassThenSettle(button: button, finalBackground: gray)
-                } else {
-                    button.backgroundColor = gray
-                    button.setTitleColor(.label, for: .normal)
-                }
+                applySelectedPillFill(to: button)
+                button.setTitleColor(UIColor { tc in
+                    tc.userInterfaceStyle == .dark ? UIColor.white.withAlphaComponent(0.95) : UIColor(white: 0.22, alpha: 1)
+                }, for: .normal)
+                button.backgroundColor = .clear
             } else {
                 let apply = {
                     button.backgroundColor = .clear
                     button.setTitleColor(.secondaryLabel, for: .normal)
                 }
                 if animated {
-                    UIView.animate(withDuration: 0.22, delay: 0, options: [.curveEaseOut], animations: apply)
+                    UIView.animate(withDuration: 0.2, delay: 0, options: [.curveEaseOut], animations: apply)
                 } else {
                     apply()
                 }
@@ -105,49 +114,21 @@ final class MediaLibraryFolderTabsView: UIView {
         guard selectedIndex < tabButtons.count else { return }
         let button = tabButtons[selectedIndex]
         let rect = button.convert(button.bounds, to: scrollView)
-        scrollView.scrollRectToVisible(rect.insetBy(dx: -32, dy: 0), animated: animated)
+        scrollView.scrollRectToVisible(rect.insetBy(dx: -36, dy: 0), animated: animated)
     }
 
-    private func selectedFill(for button: UIButton) -> UIColor {
-        let light = UIColor(white: 0.88, alpha: 1)
-        return UIColor { tc in
-            tc.userInterfaceStyle == .dark ? UIColor.tertiarySystemFill : light
-        }.resolvedColor(with: button.traitCollection)
-    }
-
-    /// Краткий эффект стекла на время анимации перехода, затем светло-серый фон.
-    private func playGlassThenSettle(button: UIButton, finalBackground: UIColor) {
-        let blurStyle: UIBlurEffect.Style = {
-            if #available(iOS 13.0, *) {
-                return .systemChromeMaterial
-            }
-            return .light
-        }()
-        let ev = UIVisualEffectView(effect: UIBlurEffect(style: blurStyle))
-        ev.frame = button.bounds
-        ev.layer.cornerRadius = button.layer.cornerRadius
-        ev.clipsToBounds = true
-        ev.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        ev.isUserInteractionEnabled = false
-        ev.alpha = 1
-        button.insertSubview(ev, at: 0)
-
-        button.setTitleColor(.label, for: .normal)
-        button.backgroundColor = .clear
-
-        UIView.animate(
-            withDuration: 0.4,
-            delay: 0,
-            usingSpringWithDamping: 0.88,
-            initialSpringVelocity: 0.35,
-            options: [.curveEaseOut, .allowUserInteraction]
-        ) {
-            ev.alpha = 0
-            button.backgroundColor = finalBackground
-        } completion: { _ in
-            ev.removeFromSuperview()
-            button.backgroundColor = finalBackground
+    private func applySelectedPillFill(to button: UIButton) {
+        let fill = UIView()
+        fill.tag = TabPill.pillFillTag
+        fill.backgroundColor = UIColor { tc in
+            tc.userInterfaceStyle == .dark ? UIColor(white: 0.28, alpha: 1) : UIColor(white: 0.91, alpha: 1)
         }
+        fill.frame = button.bounds
+        fill.layer.cornerRadius = TabPill.cornerRadius
+        fill.clipsToBounds = true
+        fill.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        fill.isUserInteractionEnabled = false
+        button.insertSubview(fill, at: 0)
     }
 
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
@@ -155,5 +136,5 @@ final class MediaLibraryFolderTabsView: UIView {
         updateSelection(animated: false)
     }
 
-    static let preferredHeight: CGFloat = 34
+    static let preferredHeight: CGFloat = 26
 }

@@ -4,11 +4,14 @@ import UIKit
 final class MediaItemEditorViewController: UITableViewController {
     enum Mode {
         case create
+        /// Данные из каталога (TMDB и т.п.) — поля уже заполнены, пользователь правит и сохраняет.
+        case createPrefilled(MediaItem)
         case edit(existing: MediaItem)
 
         var navigationTitle: String {
             switch self {
             case .create: return "Новый объект"
+            case .createPrefilled: return "Новый объект"
             case .edit: return "Редактирование"
             }
         }
@@ -35,6 +38,8 @@ final class MediaItemEditorViewController: UITableViewController {
         switch mode {
         case .create:
             self.item = MediaItem(kind: .film, title: "", isManuallyCreated: true)
+        case .createPrefilled(let draft):
+            self.item = draft
         case .edit(let existing):
             self.item = existing
         }
@@ -93,8 +98,10 @@ final class MediaItemEditorViewController: UITableViewController {
         case .hashtags: return 1
         case .delete:
             switch mode {
-            case .create: return 0
-            case .edit: return 1
+            case .create, .createPrefilled:
+                return 0
+            case .edit:
+                return 1
             }
         }
     }
