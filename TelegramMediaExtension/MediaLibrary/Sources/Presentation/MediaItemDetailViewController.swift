@@ -17,6 +17,12 @@ final class MediaItemDetailViewController: UIViewController {
     private let tagsTitle = UILabel()
     private let tagsBody = UILabel()
 
+    private var bannerColorObserver: NSObjectProtocol?
+    private var posterUsesCatalogPlaceholder = false
+    private var liquidButtons: [LiquidGlassBarButtonView] = []
+    private weak var favoriteButtonView: LiquidGlassBarButtonView?
+    private weak var editButtonView: LiquidGlassBarButtonView?
+
     init(item: MediaItem) {
         self.item = item
         super.init(nibName: nil, bundle: nil)
@@ -30,6 +36,7 @@ final class MediaItemDetailViewController: UIViewController {
         super.viewDidLoad()
         view.backgroundColor = .systemGroupedBackground
         navigationItem.largeTitleDisplayMode = .never
+        navigationItem.title = ""
 
         scroll.alwaysBounceVertical = true
         stack.axis = .vertical
@@ -40,7 +47,6 @@ final class MediaItemDetailViewController: UIViewController {
         posterView.contentMode = .scaleAspectFill
         posterView.clipsToBounds = true
         posterView.layer.cornerRadius = 12
-        posterView.backgroundColor = .secondarySystemFill
         posterView.heightAnchor.constraint(equalToConstant: 220).isActive = true
 
         titleLabel.font = TMETheme.Fonts.titleSemibold(22)
@@ -78,9 +84,24 @@ final class MediaItemDetailViewController: UIViewController {
         tagsBody.textColor = TMETheme.Colors.accent
         tagsBody.numberOfLines = 0
 
-        let edit = UIBarButtonItem(title: "Изменить", style: .plain, target: self, action: #selector(editTapped))
-        let more = UIBarButtonItem(image: UIImage(systemName: "ellipsis.circle"), style: .plain, target: self, action: #selector(moreTapped))
-        navigationItem.rightBarButtonItems = [more, edit]
+        let moreView = LiquidGlassBarButtonView(symbolName: "ellipsis", accessibilityLabel: "Ещё") { [weak self] in
+            self?.moreTapped()
+        }
+        let editView = LiquidGlassBarButtonView(symbolName: "pencil", accessibilityLabel: "Изменить") { [weak self] in
+            self?.editTapped()
+        }
+        let favView = LiquidGlassBarButtonView(symbolName: favoriteSymbolName(), accessibilityLabel: "Избранное") { [weak self] in
+            self?.favoriteTapped()
+        }
+        liquidButtons = [moreView, editView, favView]
+        editButtonView = editView
+        favoriteButtonView = favView
+
+        navigationItem.rightBarButtonItems = [
+            UIBarButtonItem(customView: moreView),
+            UIBarButtonItem(customView: editView),
+            UIBarButtonItem(customView: favView)
+        ]
 
         scroll.translatesAutoresizingMaskIntoConstraints = false
         stack.translatesAutoresizingMaskIntoConstraints = false
@@ -108,6 +129,20 @@ final class MediaItemDetailViewController: UIViewController {
         statusTabs.heightAnchor.constraint(equalToConstant: MediaLibraryFolderTabsView.preferredHeight).isActive = true
 
         reloadFromStore()
+
+        bannerColorObserver = NotificationCenter.default.addObserver(
+            forName: .mediaLibraryBannerColorDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.applyPosterPlaceholderColorsIfNeeded()
+        }
+    }
+
+    deinit {
+        if let bannerColorObserver {
+            NotificationCenter.default.removeObserver(bannerColorObserver)
+        }
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -119,12 +154,12 @@ final class MediaItemDetailViewController: UIViewController {
         if let fresh = MediaLibraryStore.shared.item(id: item.id) {
             item = fresh
         }
-        title = item.title
         applyContent()
     }
 
     private func applyContent() {
         titleLabel.text = item.title
+        refreshRightBarButtons()
 
         var meta: [String] = [item.kind.title]
         if let y = item.year { meta.append(String(y)) }
@@ -161,14 +196,55 @@ final class MediaItemDetailViewController: UIViewController {
         if let url = MediaLibraryStore.coverImageURL(fileName: item.coverFileName),
            let data = try? Data(contentsOf: url),
            let img = UIImage(data: data) {
+            posterUsesCatalogPlaceholder = false
             posterView.contentMode = .scaleAspectFill
             posterView.image = img
+            posterView.backgroundColor = .clear
+            posterView.tintColor = nil
         } else {
+            posterUsesCatalogPlaceholder = true
             posterView.contentMode = .center
-            let sym = UIImage.SymbolConfiguration(pointSize: 56, weight: .light)
-            posterView.image = UIImage(systemName: "photo", withConfiguration: sym)
-            posterView.tintColor = .tertiaryLabel
+            let sym = UIImage.SymbolConfiguration(pointSize: 56, weight: .medium)
+            posterView.image = UIImage(systemName: posterSymbolName(for: item.kind), withConfiguration: sym)
+            applyPosterPlaceholderColorsIfNeeded()
         }
+    }
+
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        applyPosterPlaceholderColorsIfNeeded()
+        for b in liquidButtons {
+            b.updateBlurStyle(for: traitCollection)
+        }
+    }
+
+    private func applyPosterPlaceholderColorsIfNeeded() {
+        guard posterUsesCatalogPlaceholder else { return }
+        posterView.tintColor = MediaLibraryHeaderBannerColor.posterPlaceholderTint(for: traitCollection)
+        posterView.backgroundColor = MediaLibraryHeaderBannerColor.posterPlaceholderFill(for: traitCollection)
+    }
+
+    private func posterSymbolName(for kind: MediaItemKind) -> String {
+        switch kind {
+        case .film: return "film"
+        case .series: return "tv"
+        case .book: return "book.closed"
+        case .musicAlbum: return "music.note.list"
+        }
+    }
+
+    private func refreshRightBarButtons() {
+        favoriteButtonView?.setSymbolName(favoriteSymbolName())
+    }
+
+    private func favoriteSymbolName() -> String {
+        item.isFavorite ? "star.fill" : "star"
+    }
+
+    private func favoriteTapped() {
+        item.isFavorite.toggle()
+        MediaLibraryStore.shared.upsert(item)
+        refreshRightBarButtons()
     }
 
     private func progressSummary() -> String {
@@ -182,7 +258,7 @@ final class MediaItemDetailViewController: UIViewController {
         return parts.isEmpty ? "Прогресс не задан" : parts.joined(separator: " · ")
     }
 
-    @objc private func editTapped() {
+    private func editTapped() {
         let editor = MediaItemEditorViewController(mode: .edit(existing: item)) { [weak self] updated in
             MediaLibraryStore.shared.upsert(updated)
             self?.item = updated
@@ -191,7 +267,7 @@ final class MediaItemDetailViewController: UIViewController {
         navigationController?.pushViewController(editor, animated: true)
     }
 
-    @objc private func moreTapped() {
+    private func moreTapped() {
         let ac = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
         ac.addAction(UIAlertAction(title: "Поделиться", style: .default) { [weak self] _ in
             guard let self else { return }
@@ -243,5 +319,62 @@ final class MediaItemDetailViewController: UIViewController {
         } else {
             nav.popViewController(animated: true)
         }
+    }
+}
+
+private final class LiquidGlassBarButtonView: UIView {
+    private static let side: CGFloat = 34
+    private let blur = UIVisualEffectView(effect: UIBlurEffect(style: .systemThinMaterialLight))
+    private let button = UIButton(type: .system)
+    private let action: () -> Void
+
+    init(symbolName: String, accessibilityLabel: String, action: @escaping () -> Void) {
+        self.action = action
+        super.init(frame: CGRect(origin: .zero, size: CGSize(width: Self.side, height: Self.side)))
+
+        isAccessibilityElement = true
+        self.accessibilityLabel = accessibilityLabel
+        accessibilityTraits = [.button]
+
+        blur.isUserInteractionEnabled = false
+        blur.layer.cornerRadius = Self.side / 2
+        if #available(iOS 13.0, *) {
+            blur.layer.cornerCurve = .continuous
+        }
+        blur.clipsToBounds = true
+
+        let cfg = UIImage.SymbolConfiguration(pointSize: 13, weight: .semibold)
+        button.setImage(UIImage(systemName: symbolName, withConfiguration: cfg), for: .normal)
+        button.tintColor = UIColor { tc in
+            tc.userInterfaceStyle == .dark ? UIColor(white: 0.92, alpha: 1) : UIColor(white: 0.28, alpha: 1)
+        }
+        button.addTarget(self, action: #selector(tapped), for: .touchUpInside)
+
+        addSubview(blur)
+        addSubview(button)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override var intrinsicContentSize: CGSize { CGSize(width: Self.side, height: Self.side) }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        blur.frame = bounds
+        button.frame = bounds
+    }
+
+    func setSymbolName(_ symbolName: String) {
+        let cfg = UIImage.SymbolConfiguration(pointSize: 13, weight: .semibold)
+        button.setImage(UIImage(systemName: symbolName, withConfiguration: cfg), for: .normal)
+    }
+
+    func updateBlurStyle(for trait: UITraitCollection) {
+        let style: UIBlurEffect.Style = trait.userInterfaceStyle == .dark ? .systemThinMaterialDark : .systemThinMaterialLight
+        blur.effect = UIBlurEffect(style: style)
+    }
+
+    @objc private func tapped() {
+        action()
     }
 }

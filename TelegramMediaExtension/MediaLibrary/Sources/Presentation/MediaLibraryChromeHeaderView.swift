@@ -114,7 +114,7 @@ final class MediaLibraryChromeHeaderView: UIView {
     }
 
     init() {
-        let tabTitles = ["Все"] + MediaWatchStatus.allCases.map(\.title)
+        let tabTitles = ["Все", "Избранное"] + MediaWatchStatus.allCases.map(\.title)
         folderTabs = MediaLibraryFolderTabsView(titles: tabTitles)
         super.init(frame: .zero)
 

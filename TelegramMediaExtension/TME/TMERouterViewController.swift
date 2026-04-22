@@ -14,13 +14,13 @@ final class TMERouterViewController: UITableViewController {
             build: { MediaLibraryBuilder.build() }
         ),
         Row(
-            title: "Сообщества (скелет)",
-            subtitle: "Посты/анонсы/треды/анти-спойлер — позже",
+            title: "Сообщества",
+            subtitle: "Посты и анонсы, сохранение анонсов",
             build: { CommunitiesBuilder.build() }
         ),
         Row(
-            title: "Мои анонсы (скелет)",
-            subtitle: "Сохранённые анонсы — позже",
+            title: "Мои анонсы",
+            subtitle: "Сохранённые из сообществ, сортировка по дате",
             build: { AnnouncementsBuilder.build() }
         ),
         Row(

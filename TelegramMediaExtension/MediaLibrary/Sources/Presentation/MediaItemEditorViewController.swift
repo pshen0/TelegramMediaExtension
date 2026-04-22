@@ -77,8 +77,17 @@ final class MediaItemEditorViewController: UITableViewController {
             present(alert, animated: true)
             return
         }
+        if item.progress.hasTotalLessThanCurrent {
+            let alert = UIAlertController(
+                title: "Прогресс",
+                message: "«Всего» не может быть меньше текущего значения. Исправьте поля и попробуйте снова.",
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: "Ок", style: .default))
+            present(alert, animated: true)
+            return
+        }
         item.title = title
-        item.progress.clampCurrentToTotal()
         onSave(item)
     }
 
@@ -125,10 +134,10 @@ final class MediaItemEditorViewController: UITableViewController {
             return "Год, жанр, рейтинг (0–5), описание и обложка — как в публичных карточках."
         case .progress:
             switch item.kind {
-            case .film: return "Для фильма — минуты (пример). Позже заменим на таймкод."
-            case .series: return "Сезон и эпизод. «Текущий» не больше «Всего»."
-            case .book: return "Для книги — глава."
-            case .musicAlbum: return "Для альбома — трек."
+            case .film: return "Для фильма — минуты (пример). Сохранение возможно, если «Всего» не меньше текущего значения."
+            case .series: return "Сезон и эпизод. Сохранение возможно, если «Всего» не меньше текущего эпизода."
+            case .book: return "Для книги — глава. Сохранение возможно, если «Всего» не меньше текущей."
+            case .musicAlbum: return "Для альбома — трек. Сохранение возможно, если «Всего» не меньше текущего."
             }
         case .hashtags:
             return "Можно через запятую: #fantasy, books, reread"
@@ -204,32 +213,20 @@ final class MediaItemEditorViewController: UITableViewController {
                     }
                 case 1:
                     return makeIntCell(title: "Эпизод (тек.)", value: item.progress.current) { [weak self] v in
-                        guard let self else { return }
-                        self.item.progress.current = v
-                        self.item.progress.clampCurrentToTotal()
-                        self.tableView.reloadSections(IndexSet(integer: Section.progress.rawValue), with: .none)
+                        self?.item.progress.current = v
                     }
                 default:
                     return makeIntCell(title: "Эпизодов (всего)", value: item.progress.total) { [weak self] v in
-                        guard let self else { return }
-                        self.item.progress.total = v
-                        self.item.progress.clampCurrentToTotal()
-                        self.tableView.reloadSections(IndexSet(integer: Section.progress.rawValue), with: .none)
+                        self?.item.progress.total = v
                     }
                 }
             } else if indexPath.row == 0 {
                 return makeIntCell(title: "Текущий", value: item.progress.current) { [weak self] v in
-                    guard let self else { return }
-                    self.item.progress.current = v
-                    self.item.progress.clampCurrentToTotal()
-                    self.tableView.reloadSections(IndexSet(integer: Section.progress.rawValue), with: .none)
+                    self?.item.progress.current = v
                 }
             } else {
                 return makeIntCell(title: "Всего", value: item.progress.total) { [weak self] v in
-                    guard let self else { return }
-                    self.item.progress.total = v
-                    self.item.progress.clampCurrentToTotal()
-                    self.tableView.reloadSections(IndexSet(integer: Section.progress.rawValue), with: .none)
+                    self?.item.progress.total = v
                 }
             }
         case .notes:
@@ -578,9 +575,10 @@ private extension MediaItemEditorViewController {
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed.isEmpty {
                 onChange(nil)
-            } else {
-                onChange(Int(trimmed))
+            } else if let v = Int(trimmed) {
+                onChange(v)
             }
+            // Невалидный фрагмент (редко с numberPad) — не затираем модель вызовом onChange(nil).
         }
     }
 

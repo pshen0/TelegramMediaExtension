@@ -62,6 +62,12 @@ struct MediaProgress: Codable, Equatable {
         }
     }
 
+    /// Оба значения заданы и «всего» меньше «текущего» — сохранение формы блокируем.
+    var hasTotalLessThanCurrent: Bool {
+        guard let t = total, let c = current else { return false }
+        return t < c
+    }
+
     func displayString(kind: MediaItemKind) -> String? {
         guard let current else { return nil }
         let unit: String
@@ -95,6 +101,7 @@ struct MediaItem: Identifiable, Equatable {
     var progress: MediaProgress
     var notes: String
     var hashtags: [String]
+    var isFavorite: Bool
     var year: Int?
     var genre: String?
     /// 0…5 (условные «звёзды»), опционально.
@@ -117,6 +124,7 @@ struct MediaItem: Identifiable, Equatable {
         progress: MediaProgress = MediaProgress(),
         notes: String = "",
         hashtags: [String] = [],
+        isFavorite: Bool = false,
         year: Int? = nil,
         genre: String? = nil,
         rating: Double? = nil,
@@ -134,6 +142,7 @@ struct MediaItem: Identifiable, Equatable {
         self.progress = progress
         self.notes = notes
         self.hashtags = hashtags
+        self.isFavorite = isFavorite
         self.year = year
         self.genre = genre
         self.rating = rating
@@ -149,6 +158,7 @@ struct MediaItem: Identifiable, Equatable {
 extension MediaItem: Codable {
     private enum CK: String, CodingKey {
         case id, kind, title, status, progress, notes, hashtags
+        case isFavorite
         case year, genre, rating, synopsis, coverFileName, catalogSourceID, isManuallyCreated
         case createdAt, updatedAt
     }
@@ -162,6 +172,7 @@ extension MediaItem: Codable {
         progress = try c.decodeIfPresent(MediaProgress.self, forKey: .progress) ?? MediaProgress()
         notes = try c.decodeIfPresent(String.self, forKey: .notes) ?? ""
         hashtags = try c.decodeIfPresent([String].self, forKey: .hashtags) ?? []
+        isFavorite = try c.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
         year = try c.decodeIfPresent(Int.self, forKey: .year)
         genre = try c.decodeIfPresent(String.self, forKey: .genre)
         rating = try c.decodeIfPresent(Double.self, forKey: .rating)
@@ -182,6 +193,7 @@ extension MediaItem: Codable {
         try c.encode(progress, forKey: .progress)
         try c.encode(notes, forKey: .notes)
         try c.encode(hashtags, forKey: .hashtags)
+        try c.encode(isFavorite, forKey: .isFavorite)
         try c.encodeIfPresent(year, forKey: .year)
         try c.encodeIfPresent(genre, forKey: .genre)
         try c.encodeIfPresent(rating, forKey: .rating)

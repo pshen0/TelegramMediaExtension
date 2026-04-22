@@ -10,6 +10,7 @@ final class MediaLibraryListViewController: UITableViewController, UISearchBarDe
     private var query: String = ""
     private var statusFilter: MediaWatchStatus?
     private var kindFilter: MediaItemKind?
+    private var favoritesOnly: Bool = false
 
     private enum LibrarySort {
         case updatedDesc
@@ -349,9 +350,14 @@ final class MediaLibraryListViewController: UITableViewController, UISearchBarDe
 
     private func applyTabIndex(_ index: Int) {
         if index <= 0 {
+            favoritesOnly = false
+            statusFilter = nil
+        } else if index == 1 {
+            favoritesOnly = true
             statusFilter = nil
         } else {
-            statusFilter = MediaWatchStatus.allCases[index - 1]
+            favoritesOnly = false
+            statusFilter = MediaWatchStatus.allCases[index - 2]
         }
         applyFilters()
     }
@@ -369,6 +375,10 @@ final class MediaLibraryListViewController: UITableViewController, UISearchBarDe
         let q = query.lowercased()
 
         var result = items
+
+        if favoritesOnly {
+            result = result.filter(\.isFavorite)
+        }
 
         if let statusFilter {
             result = result.filter { $0.status == statusFilter }
@@ -410,7 +420,7 @@ final class MediaLibraryListViewController: UITableViewController, UISearchBarDe
         emptyOverlay.isHidden = !empty
         guard empty else { return }
         let total = store.totalItemCount()
-        let noFilters = query.isEmpty && statusFilter == nil && kindFilter == nil
+        let noFilters = query.isEmpty && statusFilter == nil && kindFilter == nil && favoritesOnly == false
         emptyOverlay.mode = (total == 0 && noFilters) ? .libraryEmpty : .filteredEmpty
     }
 
