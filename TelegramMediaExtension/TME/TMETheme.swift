@@ -13,6 +13,12 @@ enum TMETheme {
         static let searchFieldBackground = UIColor.secondarySystemFill
         static let listSeparator = UIColor.separator.withAlphaComponent(0.28)
     }
+
+    /// Общий вид разделителя для главного экрана, медиатеки и списка сообществ.
+    enum TableView {
+        static let separatorColor = UIColor.separator
+        static let separatorInset = UIEdgeInsets(top: 0, left: 16, bottom: 0, right: 0)
+    }
     
     enum Fonts {
         static func titleSemibold(_ size: CGFloat) -> UIFont { .systemFont(ofSize: size, weight: .semibold) }

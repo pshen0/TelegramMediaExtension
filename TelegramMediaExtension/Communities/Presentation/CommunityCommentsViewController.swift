@@ -13,6 +13,7 @@ final class CommunityCommentsViewController: UIViewController, UITableViewDataSo
     private let sendButton = UIButton(type: .system)
 
     private var comments: [CommunityComment] = []
+    private var mediaLibraryChromeObserver: NSObjectProtocol?
 
     init(message: CommunityMessage) {
         self.message = message
@@ -53,7 +54,6 @@ final class CommunityCommentsViewController: UIViewController, UITableViewDataSo
         let content = inputContainer.contentView
 
         sendButton.setImage(UIImage(systemName: "arrow.up.circle.fill"), for: .normal)
-        sendButton.tintColor = TMETheme.Colors.accent
         sendButton.accessibilityLabel = "Отправить"
         sendButton.addTarget(self, action: #selector(sendTapped), for: .touchUpInside)
 
@@ -81,8 +81,32 @@ final class CommunityCommentsViewController: UIViewController, UITableViewDataSo
         inputField.pinRight(to: sendButton.leadingAnchor, 8)
         inputField.setHeight(mode: .grOE, 38)
 
+        applyMediaLibraryChromeToSendButton()
+        mediaLibraryChromeObserver = NotificationCenter.default.addObserver(
+            forName: .mediaLibraryBannerColorDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.applyMediaLibraryChromeToSendButton()
+        }
+
         bind()
         reloadAndScroll(animated: false)
+    }
+
+    deinit {
+        if let mediaLibraryChromeObserver {
+            NotificationCenter.default.removeObserver(mediaLibraryChromeObserver)
+        }
+    }
+
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        applyMediaLibraryChromeToSendButton()
+    }
+
+    private func applyMediaLibraryChromeToSendButton() {
+        sendButton.tintColor = MediaLibraryHeaderBannerColor.catalogChromeAccent(for: traitCollection)
     }
 
     private func bind() {
@@ -181,8 +205,10 @@ private final class CommentCell: UITableViewCell {
         let padBottom: CGFloat = 10
         let timeWMax: CGFloat = 56
         let timeH: CGFloat = 16
+        let timeTrailingInset: CGFloat = 14
+        let gapTextTime: CGFloat = 6
         let text = comment.text
-        let textMaxWProbe = max(40, maxCardW - padX * 2 - timeWMax - 6)
+        let textMaxWProbe = max(40, maxCardW - padX - timeTrailingInset - timeWMax - gapTextTime)
         let probeRect = (text as NSString).boundingRect(
             with: CGSize(width: textMaxWProbe, height: CGFloat.greatestFiniteMagnitude),
             options: [.usesLineFragmentOrigin, .usesFontLeading],
@@ -190,8 +216,8 @@ private final class CommentCell: UITableViewCell {
             context: nil
         )
         let usedTextW = min(textMaxWProbe, max(ceil(probeRect.width), 1))
-        let bubbleW = min(maxCardW, max(padX * 2 + usedTextW + 6 + timeWMax, padX * 2 + 48))
-        let textMaxW = max(40, bubbleW - padX * 2 - timeWMax - 6)
+        let bubbleW = min(maxCardW, max(padX + usedTextW + gapTextTime + timeWMax + timeTrailingInset, padX * 2 + 48))
+        let textMaxW = max(40, bubbleW - padX - timeTrailingInset - timeWMax - gapTextTime)
         let textRect = (text as NSString).boundingRect(
             with: CGSize(width: textMaxW, height: CGFloat.greatestFiniteMagnitude),
             options: [.usesLineFragmentOrigin, .usesFontLeading],
@@ -214,10 +240,12 @@ private final class CommentCell: UITableViewCell {
         let padBottom: CGFloat = 10
         let timeWMax: CGFloat = 56
         let timeH: CGFloat = 16
+        let timeTrailingInset: CGFloat = 14
+        let gapTextTime: CGFloat = 6
 
         let text = bodyLabel.text ?? ""
         let font = bodyLabel.font ?? UIFont.systemFont(ofSize: 15)
-        let textMaxWProbe = max(40, maxCardW - padX * 2 - timeWMax - 6)
+        let textMaxWProbe = max(40, maxCardW - padX - timeTrailingInset - timeWMax - gapTextTime)
         let probeRect = (text as NSString).boundingRect(
             with: CGSize(width: textMaxWProbe, height: CGFloat.greatestFiniteMagnitude),
             options: [.usesLineFragmentOrigin, .usesFontLeading],
@@ -225,9 +253,9 @@ private final class CommentCell: UITableViewCell {
             context: nil
         )
         let usedTextW = min(textMaxWProbe, max(ceil(probeRect.width), 1))
-        let bubbleW = min(maxCardW, max(padX * 2 + usedTextW + 6 + timeWMax, padX * 2 + 48))
+        let bubbleW = min(maxCardW, max(padX + usedTextW + gapTextTime + timeWMax + timeTrailingInset, padX * 2 + 48))
 
-        let textMaxW = max(40, bubbleW - padX * 2 - timeWMax - 6)
+        let textMaxW = max(40, bubbleW - padX - timeTrailingInset - timeWMax - gapTextTime)
         let textRect = (text as NSString).boundingRect(
             with: CGSize(width: textMaxW, height: CGFloat.greatestFiniteMagnitude),
             options: [.usesLineFragmentOrigin, .usesFontLeading],
@@ -242,8 +270,12 @@ private final class CommentCell: UITableViewCell {
         bodyLabel.frame = CGRect(x: padX, y: padTop, width: textMaxW, height: textH)
 
         timeLabel.sizeToFit()
-        let tw = min(timeWMax, ceil(timeLabel.bounds.width) + 2)
-        timeLabel.frame = CGRect(x: bubbleW - padX - tw, y: padTop + contentBlockH - timeH, width: tw, height: timeH)
+        let measuredTw = max(ceil(timeLabel.intrinsicContentSize.width), ceil(timeLabel.bounds.width))
+        var tw = min(timeWMax, measuredTw + 4)
+        let maxTw = bubbleW - padX - timeTrailingInset
+        tw = min(tw, max(20, maxTw))
+        let timeX = max(padX, bubbleW - timeTrailingInset - tw)
+        timeLabel.frame = CGRect(x: timeX, y: padTop + contentBlockH - timeH, width: tw, height: timeH)
     }
 
     func configure(comment: CommunityComment) {

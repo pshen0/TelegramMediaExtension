@@ -5,12 +5,15 @@ struct CommunityChat: Identifiable, Codable, Equatable {
     var title: String
     var createdAt: Date
     var updatedAt: Date
+    /// JPEG в каталоге `CommunityStore.communityAvatarsDirectoryURL`.
+    var avatarFileName: String?
 
-    init(id: UUID = UUID(), title: String, createdAt: Date = Date(), updatedAt: Date = Date()) {
+    init(id: UUID = UUID(), title: String, createdAt: Date = Date(), updatedAt: Date = Date(), avatarFileName: String? = nil) {
         self.id = id
         self.title = title
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+        self.avatarFileName = avatarFileName
     }
 }
 

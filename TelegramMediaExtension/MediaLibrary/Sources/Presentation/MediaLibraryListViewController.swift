@@ -58,8 +58,8 @@ final class MediaLibraryListViewController: UITableViewController, UISearchBarDe
         tableView.backgroundColor = .clear
         tableView.clipsToBounds = false
         tableView.contentInsetAdjustmentBehavior = .never
-        tableView.separatorColor = TMETheme.Colors.listSeparator
-        tableView.separatorInset = UIEdgeInsets(top: 0, left: 16, bottom: 0, right: 0)
+        tableView.separatorColor = TMETheme.TableView.separatorColor
+        tableView.separatorInset = TMETheme.TableView.separatorInset
         tableView.rowHeight = UITableView.automaticDimension
         tableView.estimatedRowHeight = 128
         tableView.tableFooterView = UIView()

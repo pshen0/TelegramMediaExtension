@@ -35,7 +35,8 @@ final class TMERouterViewController: UITableViewController {
         
         title = "Telegram Media Extension"
         tableView.backgroundColor = TMETheme.Colors.groupedBackground
-        tableView.separatorColor = TMETheme.Colors.separator
+        tableView.separatorColor = TMETheme.TableView.separatorColor
+        tableView.separatorInset = TMETheme.TableView.separatorInset
         tableView.register(UITableViewCell.self, forCellReuseIdentifier: "cell")
     }
 

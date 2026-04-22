@@ -45,13 +45,50 @@ final class CommunityStore: ObservableObject {
         return name
     }
 
+    // MARK: - Community avatars
+
+    static var communityAvatarsDirectoryURL: URL {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let root = appSupport.appendingPathComponent("TelegramMediaExtension", isDirectory: true)
+        return root.appendingPathComponent("CommunityAvatars", isDirectory: true)
+    }
+
+    static func communityAvatarURL(fileName: String?) -> URL? {
+        guard let fileName, !fileName.isEmpty else { return nil }
+        return communityAvatarsDirectoryURL.appendingPathComponent(fileName)
+    }
+
+    /// Сохраняет JPEG-аватар; старый файл удаляется.
+    func setCommunityAvatar(communityId: UUID, jpegData: Data) throws {
+        loadIfNeeded()
+        guard let i = communities.firstIndex(where: { $0.id == communityId }) else { return }
+        try FileManager.default.createDirectory(at: Self.communityAvatarsDirectoryURL, withIntermediateDirectories: true)
+        let name = UUID().uuidString + ".jpg"
+        let url = Self.communityAvatarsDirectoryURL.appendingPathComponent(name)
+        try jpegData.write(to: url, options: [.atomic])
+        if let old = communities[i].avatarFileName, let oldURL = Self.communityAvatarURL(fileName: old) {
+            try? FileManager.default.removeItem(at: oldURL)
+        }
+        communities[i].avatarFileName = name
+        communities[i].updatedAt = Date()
+        persist()
+    }
+
+    func clearCommunityAvatar(communityId: UUID) {
+        loadIfNeeded()
+        guard let i = communities.firstIndex(where: { $0.id == communityId }) else { return }
+        if let old = communities[i].avatarFileName, let u = Self.communityAvatarURL(fileName: old) {
+            try? FileManager.default.removeItem(at: u)
+        }
+        communities[i].avatarFileName = nil
+        communities[i].updatedAt = Date()
+        persist()
+    }
+
     func loadIfNeeded() {
         guard !isLoaded else { return }
         isLoaded = true
         reloadFromDisk()
-        if communities.isEmpty {
-            seedIfEmpty()
-        }
     }
 
     func reloadFromDisk() {
@@ -93,8 +130,20 @@ final class CommunityStore: ObservableObject {
         persist()
     }
 
+    func setCommunityTitle(communityId: UUID, title: String) {
+        loadIfNeeded()
+        let t = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty, let i = communities.firstIndex(where: { $0.id == communityId }) else { return }
+        communities[i].title = t
+        communities[i].updatedAt = Date()
+        persist()
+    }
+
     func deleteCommunity(id: UUID) {
         loadIfNeeded()
+        if let old = communities.first(where: { $0.id == id })?.avatarFileName, let u = Self.communityAvatarURL(fileName: old) {
+            try? FileManager.default.removeItem(at: u)
+        }
         let messageIds = messages.filter { $0.communityId == id }.map(\.id)
         communities.removeAll(where: { $0.id == id })
         messages.removeAll(where: { $0.communityId == id })
@@ -108,6 +157,25 @@ final class CommunityStore: ObservableObject {
     func messages(for communityId: UUID) -> [CommunityMessage] {
         loadIfNeeded()
         return messages.filter { $0.communityId == communityId }.sorted { $0.createdAt < $1.createdAt }
+    }
+
+    func lastMessage(for communityId: UUID) -> CommunityMessage? {
+        messages(for: communityId).last
+    }
+
+    func listPreviewText(for communityId: UUID) -> String {
+        guard let m = lastMessage(for: communityId) else { return "Нет сообщений" }
+        switch m.kind {
+        case .post:
+            return m.text
+        case .announcement:
+            guard let a = m.announcement else { return m.text }
+            let body = (a.details?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 } ?? m.text
+            if body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return "Анонс: \(a.title)"
+            }
+            return body
+        }
     }
 
     func comments(for messageId: UUID) -> [CommunityComment] {
@@ -230,11 +298,5 @@ final class CommunityStore: ObservableObject {
         } catch {
             // demo: ignore
         }
-    }
-
-    private func seedIfEmpty() {
-        let c = createCommunity(title: "Кино: Обсуждения")
-        addPost(communityId: c.id, text: "Добро пожаловать! Здесь можно обсуждать фильмы и делиться рецензиями.")
-        addAnnouncement(communityId: c.id, title: "Премьера трейлера", date: Date().addingTimeInterval(60 * 60 * 24 * 3), details: "Официальный трейлер выходит в пятницу.")
     }
 }

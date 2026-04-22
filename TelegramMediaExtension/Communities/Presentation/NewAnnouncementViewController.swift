@@ -12,6 +12,7 @@ final class NewAnnouncementViewController: UITableViewController {
     private var linkText: String = ""
     private var pickedLocation: CommunityLocation?
     private var imageFileName: String?
+    private var mediaLibraryChromeObserver: NSObjectProtocol?
 
     init(communityId: UUID) {
         self.communityId = communityId
@@ -30,6 +31,38 @@ final class NewAnnouncementViewController: UITableViewController {
         // Компактнее, чтобы не «съедать» место заголовка
         navigationItem.rightBarButtonItem = UIBarButtonItem(image: UIImage(systemName: "checkmark"), style: .done, target: self, action: #selector(publishTapped))
         navigationItem.rightBarButtonItem?.accessibilityLabel = "Опубликовать"
+
+        applyMediaLibraryChromeToNavigation()
+        mediaLibraryChromeObserver = NotificationCenter.default.addObserver(
+            forName: .mediaLibraryBannerColorDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.applyMediaLibraryChromeToNavigation()
+        }
+    }
+
+    deinit {
+        if let mediaLibraryChromeObserver {
+            NotificationCenter.default.removeObserver(mediaLibraryChromeObserver)
+        }
+    }
+
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        applyMediaLibraryChromeToNavigation()
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        applyMediaLibraryChromeToNavigation()
+    }
+
+    private func applyMediaLibraryChromeToNavigation() {
+        let c = MediaLibraryHeaderBannerColor.catalogChromeAccent(for: traitCollection)
+        navigationItem.leftBarButtonItem?.tintColor = c
+        navigationItem.rightBarButtonItem?.tintColor = c
+        navigationController?.navigationBar.tintColor = c
     }
 
     @objc private func cancelTapped() {
@@ -184,6 +217,7 @@ private final class DatePickerSheet: UIViewController {
         view.backgroundColor = .systemBackground
         title = "Дата"
         navigationItem.rightBarButtonItem = UIBarButtonItem(title: "Готово", style: .done, target: self, action: #selector(doneTapped))
+        applyMediaLibraryChromeToNavigationBar()
 
         picker.preferredDatePickerStyle = .wheels
         picker.datePickerMode = .dateAndTime
@@ -193,6 +227,22 @@ private final class DatePickerSheet: UIViewController {
         picker.pinRight(to: view)
         picker.pinBottom(to: view.safeAreaLayoutGuide.bottomAnchor)
         picker.pinTop(to: view.safeAreaLayoutGuide.topAnchor)
+    }
+
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        applyMediaLibraryChromeToNavigationBar()
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        applyMediaLibraryChromeToNavigationBar()
+    }
+
+    private func applyMediaLibraryChromeToNavigationBar() {
+        let c = MediaLibraryHeaderBannerColor.catalogChromeAccent(for: traitCollection)
+        navigationItem.rightBarButtonItem?.tintColor = c
+        navigationController?.navigationBar.tintColor = c
     }
 
     @objc private func doneTapped() {
@@ -385,12 +435,29 @@ private final class MapPointPickerViewController: UIViewController, MKMapViewDel
         view.addSubview(map)
         map.pin(to: view)
 
-        pin.tintColor = TMETheme.Colors.accent
         pin.contentMode = .scaleAspectFit
         view.addSubview(pin)
         pin.setWidth(44)
         pin.setHeight(44)
         pin.pinCenter(to: view)
+        applyMediaLibraryChrome()
+    }
+
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        applyMediaLibraryChrome()
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        applyMediaLibraryChrome()
+    }
+
+    private func applyMediaLibraryChrome() {
+        let c = MediaLibraryHeaderBannerColor.catalogChromeAccent(for: traitCollection)
+        pin.tintColor = c
+        navigationItem.rightBarButtonItem?.tintColor = c
+        navigationController?.navigationBar.tintColor = c
     }
 
     @objc private func doneTapped() {

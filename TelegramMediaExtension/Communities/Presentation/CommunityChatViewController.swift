@@ -1,4 +1,5 @@
 import Combine
+import PhotosUI
 import SafariServices
 import UIKit
 
@@ -9,11 +10,18 @@ final class CommunityChatViewController: UIViewController, UITableViewDataSource
 
     private let tableView = UITableView(frame: .zero, style: .plain)
     private let inputContainer = UIVisualEffectView(effect: UIBlurEffect(style: .systemChromeMaterial))
+    /// Капсула вокруг поля (как в Telegram).
+    private let inputPill = UIView()
     private let inputField = UITextView()
+    private let inputPlaceholderLabel = UILabel()
+    private let emojiAccessoryButton = UIButton(type: .system)
+    private let attachButton = UIButton(type: .system)
     private let sendButton = UIButton(type: .system)
-    private let announcementButton = UIButton(type: .system)
+    private var inputPillHeightConstraint: NSLayoutConstraint!
+    private var textViewHeightConstraint: NSLayoutConstraint!
 
     private var messages: [CommunityMessage] = []
+    private var mediaLibraryChromeObserver: NSObjectProtocol?
 
     init(communityId: UUID) {
         self.communityId = communityId
@@ -29,6 +37,22 @@ final class CommunityChatViewController: UIViewController, UITableViewDataSource
 
         store.loadIfNeeded()
         title = store.communities.first(where: { $0.id == communityId })?.title ?? "Сообщество"
+
+        let announceItem = UIBarButtonItem(
+            image: UIImage(systemName: "sparkles"),
+            style: .plain,
+            target: self,
+            action: #selector(newAnnouncementTapped)
+        )
+        announceItem.accessibilityLabel = "Новый анонс"
+        let editItem = UIBarButtonItem(
+            image: UIImage(systemName: "square.and.pencil"),
+            style: .plain,
+            target: self,
+            action: #selector(editCommunityInfoTapped)
+        )
+        editItem.accessibilityLabel = "Изменить"
+        navigationItem.rightBarButtonItems = [editItem, announceItem]
 
         tableView.dataSource = self
         tableView.delegate = self
@@ -47,56 +71,178 @@ final class CommunityChatViewController: UIViewController, UITableViewDataSource
         tableView.pinRight(to: view)
         tableView.pinBottom(to: inputContainer.topAnchor)
 
-        inputContainer.pinLeft(to: view)
-        inputContainer.pinRight(to: view)
-        inputContainer.pinBottom(to: view.safeAreaLayoutGuide.bottomAnchor)
+        inputContainer.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            inputContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            inputContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            inputContainer.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor)
+        ])
 
         let content = inputContainer.contentView
-        announcementButton.setImage(UIImage(systemName: "sparkle"), for: .normal)
-        announcementButton.tintColor = TMETheme.Colors.accent
-        announcementButton.accessibilityLabel = "Новый анонс"
-        announcementButton.addTarget(self, action: #selector(newAnnouncementTapped), for: .touchUpInside)
 
-        sendButton.setImage(UIImage(systemName: "arrow.up.circle.fill"), for: .normal)
-        sendButton.tintColor = TMETheme.Colors.accent
+        attachButton.translatesAutoresizingMaskIntoConstraints = false
+        attachButton.accessibilityLabel = "Меню вложений"
+        attachButton.showsMenuAsPrimaryAction = true
+        attachButton.menu = UIMenu(children: [
+            UIAction(title: "Новый анонс", image: UIImage(systemName: "sparkles")) { [weak self] _ in
+                self?.newAnnouncementTapped()
+            }
+        ])
+        styleCircleIconButton(attachButton, systemName: "paperclip", pointSize: 20)
+
+        sendButton.translatesAutoresizingMaskIntoConstraints = false
         sendButton.accessibilityLabel = "Отправить"
         sendButton.addTarget(self, action: #selector(sendTapped), for: .touchUpInside)
 
-        inputField.font = TMETheme.Fonts.body(16)
-        inputField.backgroundColor = UIColor.secondarySystemBackground.withAlphaComponent(0.7)
-        inputField.layer.cornerRadius = 18
+        inputPill.translatesAutoresizingMaskIntoConstraints = false
+        inputPill.clipsToBounds = true
         if #available(iOS 13.0, *) {
-            inputField.layer.cornerCurve = .continuous
+            inputPill.layer.cornerCurve = .continuous
         }
-        inputField.textContainerInset = UIEdgeInsets(top: 10, left: 12, bottom: 10, right: 12)
+        inputPill.backgroundColor = UIColor.secondarySystemBackground.withAlphaComponent(0.72)
+        inputPill.layer.borderWidth = 1.0 / UIScreen.main.scale
+        inputPill.layer.borderColor = UIColor.separator.withAlphaComponent(0.4).cgColor
+
+        inputField.translatesAutoresizingMaskIntoConstraints = false
+        inputField.font = TMETheme.Fonts.body(16)
+        inputField.backgroundColor = .clear
+        inputField.textColor = .label
+        inputField.textContainerInset = UIEdgeInsets(top: 8, left: 8, bottom: 8, right: 6)
+        inputField.textContainer.lineFragmentPadding = 0
         inputField.isScrollEnabled = false
         inputField.delegate = self
 
-        content.addSubview(announcementButton)
-        content.addSubview(inputField)
+        inputPlaceholderLabel.translatesAutoresizingMaskIntoConstraints = false
+        inputPlaceholderLabel.text = "Сообщение"
+        inputPlaceholderLabel.font = inputField.font
+        inputPlaceholderLabel.textColor = .placeholderText
+        inputPlaceholderLabel.isUserInteractionEnabled = false
+
+        emojiAccessoryButton.translatesAutoresizingMaskIntoConstraints = false
+        emojiAccessoryButton.accessibilityLabel = "Смайлики"
+        let smileCfg = UIImage.SymbolConfiguration(pointSize: 22, weight: .regular)
+        emojiAccessoryButton.setImage(UIImage(systemName: "face.smiling", withConfiguration: smileCfg), for: .normal)
+        emojiAccessoryButton.tintColor = UIColor.label.withAlphaComponent(0.85)
+        emojiAccessoryButton.addTarget(self, action: #selector(emojiAccessoryTapped), for: .touchUpInside)
+
+        content.addSubview(attachButton)
+        content.addSubview(inputPill)
         content.addSubview(sendButton)
+        inputPill.addSubview(inputPlaceholderLabel)
+        inputPill.addSubview(inputField)
+        inputPill.addSubview(emojiAccessoryButton)
 
-        announcementButton.pinLeft(to: content, 10)
-        announcementButton.pinCenterY(to: inputField.centerYAnchor)
-        announcementButton.setWidth(34)
-        announcementButton.setHeight(34)
+        let side: CGFloat = 40
+        let sendSide: CGFloat = 44
+        let gap: CGFloat = 10
+        inputPillHeightConstraint = inputPill.heightAnchor.constraint(equalToConstant: 40)
+        textViewHeightConstraint = inputField.heightAnchor.constraint(equalToConstant: 24)
 
-        sendButton.pinRight(to: content, 10)
-        sendButton.pinCenterY(to: inputField.centerYAnchor)
-        sendButton.setWidth(36)
-        sendButton.setHeight(36)
+        NSLayoutConstraint.activate([
+            attachButton.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 10),
+            attachButton.centerYAnchor.constraint(equalTo: inputPill.centerYAnchor),
+            attachButton.widthAnchor.constraint(equalToConstant: side),
+            attachButton.heightAnchor.constraint(equalToConstant: side),
 
-        inputField.pinTop(to: content, 8)
-        inputField.pinBottom(to: content, 8)
-        inputField.pinLeft(to: announcementButton.trailingAnchor, 8)
-        inputField.pinRight(to: sendButton.leadingAnchor, 8)
-        inputField.setHeight(mode: .grOE, 38)
+            sendButton.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -10),
+            sendButton.centerYAnchor.constraint(equalTo: inputPill.centerYAnchor),
+            sendButton.widthAnchor.constraint(equalToConstant: sendSide),
+            sendButton.heightAnchor.constraint(equalToConstant: sendSide),
+
+            inputPill.leadingAnchor.constraint(equalTo: attachButton.trailingAnchor, constant: gap),
+            inputPill.trailingAnchor.constraint(equalTo: sendButton.leadingAnchor, constant: -gap),
+            inputPill.topAnchor.constraint(equalTo: content.topAnchor, constant: 8),
+            inputPillHeightConstraint,
+            content.bottomAnchor.constraint(equalTo: inputPill.bottomAnchor, constant: 8),
+
+            inputField.leadingAnchor.constraint(equalTo: inputPill.leadingAnchor, constant: 10),
+            inputField.topAnchor.constraint(equalTo: inputPill.topAnchor, constant: 8),
+            inputField.trailingAnchor.constraint(equalTo: emojiAccessoryButton.leadingAnchor, constant: -4),
+            textViewHeightConstraint,
+
+            emojiAccessoryButton.trailingAnchor.constraint(equalTo: inputPill.trailingAnchor, constant: -8),
+            emojiAccessoryButton.centerYAnchor.constraint(equalTo: inputPill.centerYAnchor),
+            emojiAccessoryButton.widthAnchor.constraint(equalToConstant: 32),
+            emojiAccessoryButton.heightAnchor.constraint(equalToConstant: 32),
+
+            inputPlaceholderLabel.leadingAnchor.constraint(equalTo: inputField.leadingAnchor, constant: 8),
+            inputPlaceholderLabel.centerYAnchor.constraint(equalTo: inputField.centerYAnchor)
+        ])
+
+        applyMediaLibraryChromeToInputBar()
+        mediaLibraryChromeObserver = NotificationCenter.default.addObserver(
+            forName: .mediaLibraryBannerColorDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.applyMediaLibraryChromeToInputBar()
+            self?.tableView.reloadData()
+        }
 
         bind()
         reloadMessagesAndScroll(animated: false)
+
+        view.layoutIfNeeded()
+        textViewDidChange(inputField)
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        let h = inputPill.bounds.height
+        guard h > 1 else { return }
+        inputPill.layer.cornerRadius = h * 0.5
+    }
+
+    private func styleCircleIconButton(_ button: UIButton, systemName: String, pointSize: CGFloat) {
+        var cfg = UIButton.Configuration.plain()
+        cfg.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(pointSize: pointSize, weight: .medium)
+        cfg.image = UIImage(systemName: systemName)
+        cfg.baseForegroundColor = .label
+        cfg.background.backgroundColor = UIColor.tertiarySystemFill
+        cfg.background.cornerRadius = 20
+        button.configuration = cfg
+    }
+
+    @objc private func emojiAccessoryTapped() {
+        inputField.becomeFirstResponder()
+    }
+
+    deinit {
+        if let mediaLibraryChromeObserver {
+            NotificationCenter.default.removeObserver(mediaLibraryChromeObserver)
+        }
+    }
+
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        applyMediaLibraryChromeToInputBar()
+        for case let cell as CommunityMessageCell in tableView.visibleCells {
+            cell.applyMediaLibraryChromeColors()
+        }
+    }
+
+    private func applyMediaLibraryChromeToInputBar() {
+        let accent = MediaLibraryHeaderBannerColor.catalogChromeAccent(for: traitCollection)
+        var sendCfg = UIButton.Configuration.plain()
+        sendCfg.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(pointSize: 15, weight: .bold)
+        sendCfg.image = UIImage(systemName: "paperplane.fill")
+        sendCfg.baseForegroundColor = .white
+        sendCfg.background.backgroundColor = accent
+        sendCfg.background.cornerRadius = 22
+        sendButton.configuration = sendCfg
+
+        inputPill.layer.borderColor = UIColor.separator.withAlphaComponent(0.4).cgColor
     }
 
     private func bind() {
+        store.$communities
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self else { return }
+                self.title = self.store.communities.first(where: { $0.id == self.communityId })?.title ?? "Сообщество"
+            }
+            .store(in: &cancellables)
+
         store.$messages
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
@@ -125,8 +271,16 @@ final class CommunityChatViewController: UIViewController, UITableViewDataSource
         tableView.scrollToRow(at: ip, at: .bottom, animated: animated)
     }
 
+    @objc private func editCommunityInfoTapped() {
+        let ed = EditCommunityProfileViewController(communityId: communityId)
+        let nav = UINavigationController(rootViewController: ed)
+        nav.modalPresentationStyle = .pageSheet
+        present(nav, animated: true)
+    }
+
     @objc private func sendTapped() {
-        let text = inputField.text ?? ""
+        let text = (inputField.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
         store.addPost(communityId: communityId, text: text)
         inputField.text = ""
         textViewDidChange(inputField)
@@ -176,11 +330,206 @@ final class CommunityChatViewController: UIViewController, UITableViewDataSource
     // MARK: - UITextViewDelegate
 
     func textViewDidChange(_ textView: UITextView) {
-        let size = textView.sizeThatFits(CGSize(width: textView.bounds.width, height: CGFloat.greatestFiniteMagnitude))
-        textView.isScrollEnabled = size.height > 120
+        let trimmedEmpty = (textView.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        inputPlaceholderLabel.isHidden = !trimmedEmpty
+
+        let w = max(1, textView.bounds.width)
+        let fitted = textView.sizeThatFits(CGSize(width: w, height: CGFloat.greatestFiniteMagnitude))
+        let maxTextBlock: CGFloat = 120
+        let textBlockH = min(maxTextBlock, max(24, ceil(fitted.height)))
+        textView.isScrollEnabled = fitted.height > maxTextBlock + 0.5
+
+        textViewHeightConstraint.constant = textBlockH
+        inputPillHeightConstraint.constant = textBlockH + 16
+
         view.setNeedsLayout()
         UIView.performWithoutAnimation {
-            self.inputContainer.layoutIfNeeded()
+            self.view.layoutIfNeeded()
+            let h = self.inputPill.bounds.height
+            if h > 1 {
+                self.inputPill.layer.cornerRadius = h * 0.5
+            }
+        }
+    }
+}
+
+// MARK: - Редактирование названия и аватара (только из чата)
+
+private final class EditCommunityProfileViewController: UIViewController, UITextFieldDelegate, PHPickerViewControllerDelegate {
+    private let communityId: UUID
+    private let store = CommunityStore.shared
+    private var pendingAvatarJPEG: Data?
+    private var showsAvatarPlaceholder = false
+    private var bannerColorObserver: NSObjectProtocol?
+
+    private let avatarView = UIImageView()
+    private let nameField = UITextField()
+    private let changePhotoButton = UIButton(type: .system)
+
+    init(communityId: UUID) {
+        self.communityId = communityId
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .systemGroupedBackground
+        title = "Изменить"
+
+        navigationItem.leftBarButtonItem = UIBarButtonItem(title: "Отмена", style: .plain, target: self, action: #selector(cancelTapped))
+        navigationItem.rightBarButtonItem = UIBarButtonItem(title: "Сохранить", style: .done, target: self, action: #selector(saveTapped))
+
+        avatarView.translatesAutoresizingMaskIntoConstraints = false
+        avatarView.layer.cornerRadius = 50
+        if #available(iOS 13.0, *) {
+            avatarView.layer.cornerCurve = .continuous
+        }
+        avatarView.clipsToBounds = true
+        avatarView.contentMode = .scaleAspectFill
+        avatarView.isUserInteractionEnabled = true
+        avatarView.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(changePhotoTapped)))
+
+        nameField.translatesAutoresizingMaskIntoConstraints = false
+        nameField.borderStyle = .roundedRect
+        nameField.font = TMETheme.Fonts.body(17)
+        nameField.placeholder = "Название сообщества"
+        nameField.autocapitalizationType = .sentences
+        nameField.returnKeyType = .done
+        nameField.delegate = self
+
+        changePhotoButton.translatesAutoresizingMaskIntoConstraints = false
+        changePhotoButton.setTitle("Сменить фото", for: .normal)
+        changePhotoButton.titleLabel?.font = TMETheme.Fonts.body(15)
+        changePhotoButton.addTarget(self, action: #selector(changePhotoTapped), for: .touchUpInside)
+
+        view.addSubview(avatarView)
+        view.addSubview(changePhotoButton)
+        view.addSubview(nameField)
+
+        NSLayoutConstraint.activate([
+            avatarView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 28),
+            avatarView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            avatarView.widthAnchor.constraint(equalToConstant: 100),
+            avatarView.heightAnchor.constraint(equalToConstant: 100),
+
+            changePhotoButton.topAnchor.constraint(equalTo: avatarView.bottomAnchor, constant: 12),
+            changePhotoButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+
+            nameField.topAnchor.constraint(equalTo: changePhotoButton.bottomAnchor, constant: 28),
+            nameField.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+            nameField.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+            nameField.heightAnchor.constraint(equalToConstant: 44)
+        ])
+
+        reloadFromStore()
+        applyEditChromeColors()
+
+        bannerColorObserver = NotificationCenter.default.addObserver(
+            forName: .mediaLibraryBannerColorDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self, self.showsAvatarPlaceholder else { return }
+            self.applyAvatarPlaceholderChrome()
+        }
+    }
+
+    deinit {
+        if let bannerColorObserver {
+            NotificationCenter.default.removeObserver(bannerColorObserver)
+        }
+    }
+
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        applyEditChromeColors()
+        if showsAvatarPlaceholder {
+            applyAvatarPlaceholderChrome()
+        }
+    }
+
+    private func applyEditChromeColors() {
+        let c = MediaLibraryHeaderBannerColor.catalogChromeAccent(for: traitCollection)
+        changePhotoButton.setTitleColor(c, for: .normal)
+        navigationItem.rightBarButtonItem?.tintColor = c
+    }
+
+    private func applyAvatarPlaceholderChrome() {
+        avatarView.tintColor = MediaLibraryHeaderBannerColor.posterPlaceholderTint(for: traitCollection)
+        avatarView.backgroundColor = MediaLibraryHeaderBannerColor.posterPlaceholderFill(for: traitCollection)
+    }
+
+    private func reloadFromStore() {
+        guard let chat = store.communities.first(where: { $0.id == communityId }) else { return }
+        nameField.text = chat.title
+        pendingAvatarJPEG = nil
+        if let name = chat.avatarFileName,
+           let url = CommunityStore.communityAvatarURL(fileName: name),
+           let data = try? Data(contentsOf: url),
+           let img = UIImage(data: data) {
+            showsAvatarPlaceholder = false
+            avatarView.contentMode = .scaleAspectFill
+            avatarView.image = img
+            avatarView.tintColor = nil
+            avatarView.backgroundColor = .clear
+        } else {
+            showsAvatarPlaceholder = true
+            avatarView.contentMode = .center
+            let cfg = UIImage.SymbolConfiguration(pointSize: 26, weight: .medium)
+            avatarView.image = UIImage(systemName: "person.2.fill", withConfiguration: cfg)?.withRenderingMode(.alwaysTemplate)
+            applyAvatarPlaceholderChrome()
+        }
+    }
+
+    @objc private func cancelTapped() {
+        dismiss(animated: true)
+    }
+
+    @objc private func saveTapped() {
+        let t = nameField.text ?? ""
+        let trimmed = t.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            let a = UIAlertController(title: "Введите название", message: nil, preferredStyle: .alert)
+            a.addAction(UIAlertAction(title: "Ок", style: .default))
+            present(a, animated: true)
+            return
+        }
+        store.setCommunityTitle(communityId: communityId, title: trimmed)
+        if let d = pendingAvatarJPEG {
+            try? store.setCommunityAvatar(communityId: communityId, jpegData: d)
+        }
+        dismiss(animated: true)
+    }
+
+    @objc private func changePhotoTapped() {
+        var config = PHPickerConfiguration()
+        config.filter = .images
+        config.selectionLimit = 1
+        let picker = PHPickerViewController(configuration: config)
+        picker.delegate = self
+        present(picker, animated: true)
+    }
+
+    func textFieldShouldReturn(_ textField: UITextField) -> Bool {
+        textField.resignFirstResponder()
+        return true
+    }
+
+    func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+        picker.dismiss(animated: true)
+        guard let pr = results.first else { return }
+        pr.itemProvider.loadObject(ofClass: UIImage.self) { [weak self] obj, _ in
+            DispatchQueue.main.async {
+                guard let self, let img = obj as? UIImage, let data = img.jpegData(compressionQuality: 0.88) else { return }
+                self.pendingAvatarJPEG = data
+                self.showsAvatarPlaceholder = false
+                self.avatarView.contentMode = .scaleAspectFill
+                self.avatarView.backgroundColor = .clear
+                self.avatarView.image = img
+                self.avatarView.tintColor = nil
+            }
         }
     }
 }
@@ -246,26 +595,24 @@ private final class CommunityMessageCell: UITableViewCell {
         actionsRow.addTarget(self, action: #selector(actionsTapped), for: .touchUpInside)
 
         actionsIcon.image = UIImage(systemName: "bubble.left")
-        actionsIcon.tintColor = TMETheme.Colors.accent
         actionsIcon.contentMode = .scaleAspectFit
 
         actionsLabel.font = TMETheme.Fonts.body(14)
-        actionsLabel.textColor = TMETheme.Colors.accent
         actionsLabel.text = "Leave a Comment"
 
         actionsChevron.image = UIImage(systemName: "chevron.right")
-        actionsChevron.tintColor = TMETheme.Colors.accent.withAlphaComponent(0.75)
         actionsChevron.contentMode = .scaleAspectFit
 
         linkButton.titleLabel?.font = TMETheme.Fonts.body(13)
-        linkButton.setTitleColor(TMETheme.Colors.accent, for: .normal)
         linkButton.contentHorizontalAlignment = .left
         linkButton.addTarget(self, action: #selector(linkTapped), for: .touchUpInside)
 
-        locationButton.titleLabel?.font = TMETheme.Fonts.body(13)
-        locationButton.setTitleColor(TMETheme.Colors.accent, for: .normal)
+        locationButton.titleLabel?.font = TMETheme.Fonts.body(14)
+        locationButton.titleLabel?.lineBreakMode = .byTruncatingTail
         locationButton.contentHorizontalAlignment = .left
         locationButton.addTarget(self, action: #selector(locationTapped), for: .touchUpInside)
+
+        applyMediaLibraryChromeColors()
 
         timeLabel.font = TMETheme.Fonts.body(11)
         timeLabel.textColor = .secondaryLabel
@@ -296,6 +643,23 @@ private final class CommunityMessageCell: UITableViewCell {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        applyMediaLibraryChromeColors()
+    }
+
+    /// Цвета «Leave a Comment», ссылок и места — как шапка медиатеки (обновлять при смене цвета в каталоге).
+    func applyMediaLibraryChromeColors() {
+        let c = MediaLibraryHeaderBannerColor.catalogChromeAccent(for: traitCollection)
+        actionsIcon.tintColor = c
+        actionsLabel.textColor = c
+        actionsChevron.tintColor = c
+        linkButton.setTitleColor(c, for: .normal)
+        linkButton.tintColor = c
+        locationButton.setTitleColor(c, for: .normal)
+        locationButton.tintColor = c
+    }
+
     static func height(for message: CommunityMessage, tableWidth: CGFloat) -> CGFloat {
         let w = max(0, tableWidth)
         let side: CGFloat = 16
@@ -307,6 +671,8 @@ private final class CommunityMessageCell: UITableViewCell {
             let padBottom: CGFloat = 10
             let timeWMax: CGFloat = 56
             let timeH: CGFloat = 16
+            let timeTrailingInset: CGFloat = 14
+            let gapTextTime: CGFloat = 6
             let sepGapTop: CGFloat = 8
             let sepH: CGFloat = 1
             let sepGapBottom: CGFloat = 4
@@ -318,7 +684,7 @@ private final class CommunityMessageCell: UITableViewCell {
             let lw = ceil(("Leave a Comment" as NSString).size(withAttributes: [.font: TMETheme.Fonts.body(14)]).width)
             let stripIntrinsic = stripHPadding * 2 + icon + gap + lw + gap + chev
 
-            let textMaxWProbe = max(40, maxCardW - padX * 2 - timeWMax - 6)
+            let textMaxWProbe = max(40, maxCardW - padX - timeTrailingInset - timeWMax - gapTextTime)
             let probeRect = (text as NSString).boundingRect(
                 with: CGSize(width: textMaxWProbe, height: CGFloat.greatestFiniteMagnitude),
                 options: [.usesLineFragmentOrigin, .usesFontLeading],
@@ -326,8 +692,8 @@ private final class CommunityMessageCell: UITableViewCell {
                 context: nil
             )
             let usedTextW = min(textMaxWProbe, max(ceil(probeRect.width), 1))
-            let bubbleW = min(maxCardW, max(stripIntrinsic, padX * 2 + usedTextW + 6 + timeWMax))
-            let textMaxW = max(40, bubbleW - padX * 2 - timeWMax - 6)
+            let bubbleW = min(maxCardW, max(stripIntrinsic, padX + usedTextW + gapTextTime + timeWMax + timeTrailingInset))
+            let textMaxW = max(40, bubbleW - padX - timeTrailingInset - timeWMax - gapTextTime)
             let textRect = (text as NSString).boundingRect(
                 with: CGSize(width: textMaxW, height: CGFloat.greatestFiniteMagnitude),
                 options: [.usesLineFragmentOrigin, .usesFontLeading],
@@ -377,10 +743,8 @@ private final class CommunityMessageCell: UITableViewCell {
                 context: nil
             ).height) + 6
         }
-        if a?.location != nil {
-            y += 28 + 6
-        }
-        y += 18 + 10
+        // Одна строка: «Место» + время (или только время)
+        y += 22 + 10
         return 6 + y
     }
 
@@ -400,6 +764,8 @@ private final class CommunityMessageCell: UITableViewCell {
             let padBottom: CGFloat = 10
             let timeWMax: CGFloat = 56
             let timeH: CGFloat = 16
+            let timeTrailingInset: CGFloat = 14
+            let gapTextTime: CGFloat = 6
             let sepGapTop: CGFloat = 8
             let sepH = max(1.0 / max(traitCollection.displayScale, 1.0), 0.5)
             let sepGapBottom: CGFloat = 4
@@ -415,7 +781,7 @@ private final class CommunityMessageCell: UITableViewCell {
             let lw = (labelText as NSString).size(withAttributes: [.font: actionsLabel.font ?? UIFont.systemFont(ofSize: 14)]).width
             let stripIntrinsic = stripHPadding * 2 + icon + gap + ceil(lw) + gap + chev
 
-            let textMaxWProbe = max(40, maxCardW - padX * 2 - timeWMax - 6)
+            let textMaxWProbe = max(40, maxCardW - padX - timeTrailingInset - timeWMax - gapTextTime)
             let probeRect = (text as NSString).boundingRect(
                 with: CGSize(width: textMaxWProbe, height: CGFloat.greatestFiniteMagnitude),
                 options: [.usesLineFragmentOrigin, .usesFontLeading],
@@ -423,9 +789,9 @@ private final class CommunityMessageCell: UITableViewCell {
                 context: nil
             )
             let usedTextW = min(textMaxWProbe, max(ceil(probeRect.width), 1))
-            let bubbleW = min(maxCardW, max(stripIntrinsic, padX * 2 + usedTextW + 6 + timeWMax))
+            let bubbleW = min(maxCardW, max(stripIntrinsic, padX + usedTextW + gapTextTime + timeWMax + timeTrailingInset))
 
-            let textMaxW = max(40, bubbleW - padX * 2 - timeWMax - 6)
+            let textMaxW = max(40, bubbleW - padX - timeTrailingInset - timeWMax - gapTextTime)
             let textRect = (text as NSString).boundingRect(
                 with: CGSize(width: textMaxW, height: CGFloat.greatestFiniteMagnitude),
                 options: [.usesLineFragmentOrigin, .usesFontLeading],
@@ -441,8 +807,11 @@ private final class CommunityMessageCell: UITableViewCell {
             bodyLabel.frame = CGRect(x: padX, y: padTop, width: textMaxW, height: textH)
 
             timeLabel.sizeToFit()
-            let tw = min(timeWMax, ceil(timeLabel.bounds.width) + 2)
-            let timeX = bubbleW - padX - tw
+            let measuredTw = max(ceil(timeLabel.intrinsicContentSize.width), ceil(timeLabel.bounds.width))
+            var tw = min(timeWMax, measuredTw + 4)
+            let maxTw = bubbleW - padX - timeTrailingInset
+            tw = min(tw, max(20, maxTw))
+            let timeX = max(padX, bubbleW - timeTrailingInset - tw)
             let timeY = padTop + contentBlockH - timeH
             timeLabel.frame = CGRect(x: timeX, y: timeY, width: tw, height: timeH)
 
@@ -500,19 +869,34 @@ private final class CommunityMessageCell: UITableViewCell {
                 linkButton.frame = .zero
             }
 
+            let annInset: CGFloat = 12
+            let timeTrailingInset: CGFloat = 14
+            let footerGap: CGFloat = 8
+            let footerH: CGFloat = 22
+
+            timeLabel.sizeToFit()
+            let timeMeasured = max(ceil(timeLabel.intrinsicContentSize.width), ceil(timeLabel.bounds.width))
+            let timeRightX = bw - annInset - timeTrailingInset
+            var tw = min(120, timeMeasured + 4)
             if !locationButton.isHidden {
-                let locSize = locationButton.sizeThatFits(CGSize(width: bw - 24, height: 120))
-                locationButton.frame = CGRect(x: 12, y: y, width: bw - 24, height: ceil(locSize.height))
-                y = locationButton.frame.maxY + 6
+                tw = min(tw, max(44, timeRightX - annInset - footerGap - 48))
+            } else {
+                tw = min(tw, max(44, timeRightX - annInset))
+            }
+            let timeX = timeRightX - tw
+
+            if !locationButton.isHidden {
+                let locMaxW = max(40, timeX - annInset - footerGap)
+                locationButton.titleLabel?.numberOfLines = 1
+                locationButton.contentHorizontalAlignment = .left
+                locationButton.frame = CGRect(x: annInset, y: y, width: locMaxW, height: footerH)
+                timeLabel.frame = CGRect(x: timeX, y: y, width: tw, height: footerH)
             } else {
                 locationButton.frame = .zero
+                timeLabel.frame = CGRect(x: timeX, y: y, width: tw, height: footerH)
             }
 
-            let timeHAnn: CGFloat = 18
-            timeLabel.sizeToFit()
-            let tw = min(bw - 24, timeLabel.bounds.width + 6)
-            timeLabel.frame = CGRect(x: x + bw - 12 - tw, y: y, width: tw, height: timeHAnn)
-            y = timeLabel.frame.maxY + 10
+            y += footerH + 10
 
             bubble.frame = CGRect(x: x, y: 6, width: bw, height: y)
         }
@@ -568,6 +952,7 @@ private final class CommunityMessageCell: UITableViewCell {
 
             bubble.backgroundColor = MediaLibraryHeaderBannerColor.posterPlaceholderFill(for: traitCollection)
         }
+        applyMediaLibraryChromeColors()
         setNeedsLayout()
     }
 
@@ -614,8 +999,10 @@ extension CommunityMessageCell: UIContextMenuInteractionDelegate {
                     UIAction(title: "Уже в моих анонсах", attributes: .disabled) { _ in }
                 ])
             }
+            let chrome = MediaLibraryHeaderBannerColor.catalogChromeAccent(for: self.traitCollection)
+            let bookmarkImage = UIImage(systemName: "bookmark")?.withTintColor(chrome, renderingMode: .alwaysOriginal)
             return UIMenu(children: [
-                UIAction(title: "В мои анонсы", image: UIImage(systemName: "bookmark")) { [weak self] _ in
+                UIAction(title: "В мои анонсы", image: bookmarkImage) { [weak self] _ in
                     self?.onSaveAnnouncement?(msg)
                 }
             ])

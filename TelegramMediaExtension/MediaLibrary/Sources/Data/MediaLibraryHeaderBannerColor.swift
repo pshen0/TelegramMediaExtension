@@ -31,6 +31,11 @@ enum MediaLibraryHeaderBannerColor {
         return UIColor(red: 0.90, green: 0.92, blue: 0.95, alpha: 1)
     }
 
+    /// Тот же цвет, что у полосы шапки в медиатеке — для кнопок и акцентного текста на других экранах приложения.
+    static func catalogChromeAccent(for trait: UITraitCollection) -> UIColor {
+        resolved(for: trait)
+    }
+
     /// Цвет подложки bounce / навбара и баннера.
     static func resolved(for trait: UITraitCollection) -> UIColor {
         if let rgba = loadFromUserData() {
