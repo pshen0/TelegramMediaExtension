@@ -43,12 +43,21 @@ struct CommunityLocation: Codable, Equatable {
 struct CommunityComment: Identifiable, Codable, Equatable {
     var id: UUID
     var messageId: UUID
+    /// `nil` — комментарий к посту; иначе ответы в отдельном треде под этим комментарием.
+    var threadParentCommentId: UUID?
     var text: String
     var createdAt: Date
 
-    init(id: UUID = UUID(), messageId: UUID, text: String, createdAt: Date = Date()) {
+    init(
+        id: UUID = UUID(),
+        messageId: UUID,
+        threadParentCommentId: UUID? = nil,
+        text: String,
+        createdAt: Date = Date()
+    ) {
         self.id = id
         self.messageId = messageId
+        self.threadParentCommentId = threadParentCommentId
         self.text = text
         self.createdAt = createdAt
     }

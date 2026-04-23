@@ -178,16 +178,18 @@ final class CommunityStore: ObservableObject {
         }
     }
 
-    func comments(for messageId: UUID) -> [CommunityComment] {
+    func comments(for messageId: UUID, threadParentCommentId: UUID? = nil) -> [CommunityComment] {
         loadIfNeeded()
-        return comments.filter { $0.messageId == messageId }.sorted { $0.createdAt < $1.createdAt }
+        return comments
+            .filter { $0.messageId == messageId && $0.threadParentCommentId == threadParentCommentId }
+            .sorted { $0.createdAt < $1.createdAt }
     }
 
-    func addComment(messageId: UUID, text: String) {
+    func addComment(messageId: UUID, threadParentCommentId: UUID? = nil, text: String) {
         loadIfNeeded()
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !t.isEmpty else { return }
-        comments.append(CommunityComment(messageId: messageId, text: t))
+        comments.append(CommunityComment(messageId: messageId, threadParentCommentId: threadParentCommentId, text: t))
         persist()
     }
 

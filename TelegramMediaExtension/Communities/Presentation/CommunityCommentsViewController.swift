@@ -1,22 +1,49 @@
 import Combine
 import UIKit
 
+/// Комментарии к посту или вложенное обсуждение под одним комментарием (`threadParentCommentId`).
 final class CommunityCommentsViewController: UIViewController, UITableViewDataSource, UITableViewDelegate, UITextViewDelegate {
+    private enum InputBarMetrics {
+        static let sideDiameter: CGFloat = 32
+        static let barVerticalMargin: CGFloat = 6
+        static let pillInnerVerticalPadding: CGFloat = 5
+        static let minTextHeight: CGFloat = 20
+        static var compactPillHeight: CGFloat { minTextHeight + pillInnerVerticalPadding * 2 }
+        static let multilinePillMaxCornerRadius: CGFloat = 20
+        static let gapLastCommentToInputBar: CGFloat = 10
+        static let scrollPinnedBottomSlack: CGFloat = 48
+    }
+
     private let store = CommunityStore.shared
-    private let message: CommunityMessage
+    /// Корневое сообщество-сообщение (пост), к которому относится цепочка комментариев.
+    private let rootMessage: CommunityMessage
+    /// `nil` — список комментариев к посту; иначе ответы внутри треда этого комментария.
+    private let threadParentCommentId: UUID?
+
+    /// Цепочка только из трёх экранов: сообщество → комментарии → обсуждение; глубже переходов нет.
+    private var allowsOpeningNestedThread: Bool { threadParentCommentId == nil }
 
     private var cancellables = Set<AnyCancellable>()
 
     private let tableView = UITableView(frame: .zero, style: .plain)
-    private let inputContainer = UIVisualEffectView(effect: UIBlurEffect(style: .systemChromeMaterial))
+    private let inputContainer = UIView()
+    private let inputPill = UIView()
     private let inputField = UITextView()
+    private let inputPlaceholderLabel = UILabel()
     private let sendButton = UIButton(type: .system)
+    private var inputPillHeightConstraint: NSLayoutConstraint!
+    private var textViewHeightConstraint: NSLayoutConstraint!
 
     private var comments: [CommunityComment] = []
     private var mediaLibraryChromeObserver: NSObjectProtocol?
+    private var keyboardFrameObserver: NSObjectProtocol?
+    private var keyboardHideObserver: NSObjectProtocol?
+    private var cachedKeyboardBottomOverlap: CGFloat = 0
+    private let keyboardDismissOnTapOutside = MediaLibraryKeyboardDismissOnTapOutside()
 
-    init(message: CommunityMessage) {
-        self.message = message
+    init(message: CommunityMessage, threadParentCommentId: UUID? = nil) {
+        self.rootMessage = message
+        self.threadParentCommentId = threadParentCommentId
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -24,89 +51,313 @@ final class CommunityCommentsViewController: UIViewController, UITableViewDataSo
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "Комментарии"
         view.backgroundColor = .systemGroupedBackground
         navigationItem.largeTitleDisplayMode = .never
+        title = threadParentCommentId == nil ? "Комментарии" : "Обсуждение"
 
         store.loadIfNeeded()
 
         tableView.dataSource = self
         tableView.delegate = self
         tableView.separatorStyle = .none
-        tableView.backgroundColor = .systemGroupedBackground
+        tableView.backgroundColor = .clear
         tableView.keyboardDismissMode = .interactive
-        tableView.contentInset = UIEdgeInsets(top: 10, left: 0, bottom: 10, right: 0)
+        tableView.contentInsetAdjustmentBehavior = .never
+        tableView.contentInset = UIEdgeInsets(top: 8, left: 0, bottom: 0, right: 0)
         tableView.estimatedRowHeight = 72
         tableView.register(CommentCell.self, forCellReuseIdentifier: CommentCell.reuseId)
 
         view.addSubview(tableView)
         view.addSubview(inputContainer)
+        keyboardDismissOnTapOutside.attach(to: view)
 
         tableView.pinTop(to: view.safeAreaLayoutGuide.topAnchor)
         tableView.pinLeft(to: view)
         tableView.pinRight(to: view)
-        tableView.pinBottom(to: inputContainer.topAnchor)
+        tableView.pinBottom(to: view)
 
-        inputContainer.pinLeft(to: view)
-        inputContainer.pinRight(to: view)
-        inputContainer.pinBottom(to: view.safeAreaLayoutGuide.bottomAnchor)
+        inputContainer.translatesAutoresizingMaskIntoConstraints = false
+        inputContainer.backgroundColor = .clear
+        inputContainer.isOpaque = false
+        inputContainer.isUserInteractionEnabled = true
+        NSLayoutConstraint.activate([
+            inputContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            inputContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            inputContainer.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor)
+        ])
 
-        let content = inputContainer.contentView
+        let content = inputContainer
 
-        sendButton.setImage(UIImage(systemName: "arrow.up.circle.fill"), for: .normal)
+        sendButton.translatesAutoresizingMaskIntoConstraints = false
         sendButton.accessibilityLabel = "Отправить"
         sendButton.addTarget(self, action: #selector(sendTapped), for: .touchUpInside)
 
-        inputField.font = TMETheme.Fonts.body(16)
-        inputField.backgroundColor = UIColor.secondarySystemBackground.withAlphaComponent(0.7)
-        inputField.layer.cornerRadius = 18
+        inputPill.translatesAutoresizingMaskIntoConstraints = false
+        inputPill.clipsToBounds = true
         if #available(iOS 13.0, *) {
-            inputField.layer.cornerCurve = .continuous
+            inputPill.layer.cornerCurve = .continuous
         }
-        inputField.textContainerInset = UIEdgeInsets(top: 10, left: 12, bottom: 10, right: 12)
+        inputPill.isOpaque = true
+        inputPill.layer.borderWidth = 1.0 / UIScreen.main.scale
+
+        inputField.translatesAutoresizingMaskIntoConstraints = false
+        inputField.font = TMETheme.Fonts.body(16)
+        inputField.backgroundColor = .clear
+        inputField.textColor = .label
+        inputField.textContainerInset = UIEdgeInsets(top: 5, left: 8, bottom: 5, right: 8)
+        inputField.textContainer.lineFragmentPadding = 0
         inputField.isScrollEnabled = false
         inputField.delegate = self
 
-        content.addSubview(inputField)
+        inputPlaceholderLabel.translatesAutoresizingMaskIntoConstraints = false
+        inputPlaceholderLabel.text = "Комментарий"
+        inputPlaceholderLabel.font = inputField.font
+        inputPlaceholderLabel.textColor = .placeholderText
+        inputPlaceholderLabel.isUserInteractionEnabled = false
+
+        content.addSubview(inputPill)
         content.addSubview(sendButton)
+        inputPill.addSubview(inputPlaceholderLabel)
+        inputPill.addSubview(inputField)
 
-        sendButton.pinRight(to: content, 10)
-        sendButton.pinCenterY(to: inputField.centerYAnchor)
-        sendButton.setWidth(36)
-        sendButton.setHeight(36)
+        let side = InputBarMetrics.sideDiameter
+        let gap: CGFloat = 8
+        inputPillHeightConstraint = inputPill.heightAnchor.constraint(equalToConstant: InputBarMetrics.compactPillHeight)
+        textViewHeightConstraint = inputField.heightAnchor.constraint(equalToConstant: InputBarMetrics.minTextHeight)
 
-        inputField.pinTop(to: content, 8)
-        inputField.pinBottom(to: content, 8)
-        inputField.pinLeft(to: content, 12)
-        inputField.pinRight(to: sendButton.leadingAnchor, 8)
-        inputField.setHeight(mode: .grOE, 38)
+        NSLayoutConstraint.activate([
+            inputPill.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 10),
+            inputPill.trailingAnchor.constraint(equalTo: sendButton.leadingAnchor, constant: -gap),
+            inputPill.topAnchor.constraint(equalTo: content.topAnchor, constant: InputBarMetrics.barVerticalMargin),
+            inputPillHeightConstraint,
+            content.bottomAnchor.constraint(equalTo: inputPill.bottomAnchor, constant: InputBarMetrics.barVerticalMargin),
 
-        applyMediaLibraryChromeToSendButton()
+            sendButton.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -10),
+            sendButton.centerYAnchor.constraint(equalTo: inputPill.centerYAnchor),
+            sendButton.widthAnchor.constraint(equalToConstant: side),
+            sendButton.heightAnchor.constraint(equalToConstant: side),
+
+            inputField.leadingAnchor.constraint(equalTo: inputPill.leadingAnchor, constant: 10),
+            inputField.topAnchor.constraint(equalTo: inputPill.topAnchor, constant: InputBarMetrics.pillInnerVerticalPadding),
+            inputField.trailingAnchor.constraint(equalTo: inputPill.trailingAnchor, constant: -10),
+            textViewHeightConstraint,
+
+            inputPlaceholderLabel.leadingAnchor.constraint(equalTo: inputField.leadingAnchor, constant: 8),
+            inputPlaceholderLabel.centerYAnchor.constraint(equalTo: inputField.centerYAnchor)
+        ])
+
+        applyMediaLibraryChromeToInputBar()
         mediaLibraryChromeObserver = NotificationCenter.default.addObserver(
             forName: .mediaLibraryBannerColorDidChange,
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.applyMediaLibraryChromeToSendButton()
+            self?.applyMediaLibraryChromeToInputBar()
         }
 
         bind()
         reloadAndScroll(animated: false)
+
+        view.layoutIfNeeded()
+        textViewDidChange(inputField)
+        updateCommentsTableBottomInset(keyboardOverlap: nil, adjustScroll: false)
+
+        keyboardFrameObserver = NotificationCenter.default.addObserver(
+            forName: UIResponder.keyboardWillChangeFrameNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            guard let self else { return }
+            let fromFrame = self.keyboardOverlapHeight(from: note)
+            let fromGuide = max(0, self.view.bounds.maxY - self.view.keyboardLayoutGuide.layoutFrame.minY)
+            let overlap = max(fromFrame, fromGuide)
+            self.cachedKeyboardBottomOverlap = overlap > 0.5 ? overlap : 0
+            self.animateWithKeyboardNotification(
+                note,
+                animations: {
+                    self.updateCommentsTableBottomInset(keyboardOverlap: overlap, adjustScroll: true, deferGrowingScroll: true)
+                },
+                completion: {
+                    guard overlap > 0.5 else { return }
+                    self.scrollCommentsToLastRowRespectingInset(animated: false)
+                }
+            )
+        }
+
+        keyboardHideObserver = NotificationCenter.default.addObserver(
+            forName: UIResponder.keyboardWillHideNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self else { return }
+            self.cachedKeyboardBottomOverlap = 0
+            self.updateCommentsTableBottomInset(keyboardOverlap: nil, adjustScroll: true, deferGrowingScroll: false)
+        }
     }
 
     deinit {
         if let mediaLibraryChromeObserver {
             NotificationCenter.default.removeObserver(mediaLibraryChromeObserver)
         }
+        if let keyboardFrameObserver {
+            NotificationCenter.default.removeObserver(keyboardFrameObserver)
+        }
+        if let keyboardHideObserver {
+            NotificationCenter.default.removeObserver(keyboardHideObserver)
+        }
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        updateCommentsTableBottomInset(keyboardOverlap: nil, adjustScroll: false)
+        updateInputPillCornerRadius()
+    }
+
+    private func updateInputPillCornerRadius() {
+        let h = inputPill.bounds.height
+        guard h > 1 else { return }
+        let textH = textViewHeightConstraint.constant
+        let singleLine = textH <= InputBarMetrics.minTextHeight + 0.5
+        if singleLine {
+            inputPill.layer.cornerRadius = h * 0.5
+        } else {
+            inputPill.layer.cornerRadius = min(InputBarMetrics.multilinePillMaxCornerRadius, h * 0.5)
+        }
     }
 
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
-        applyMediaLibraryChromeToSendButton()
+        applyMediaLibraryChromeToInputBar()
     }
 
-    private func applyMediaLibraryChromeToSendButton() {
-        sendButton.tintColor = MediaLibraryHeaderBannerColor.catalogChromeAccent(for: traitCollection)
+    private func applyMediaLibraryChromeToInputBar() {
+        let accent = MediaLibraryHeaderBannerColor.catalogChromeAccent(for: traitCollection)
+        let d = InputBarMetrics.sideDiameter
+        let r = d / 2
+        var sendCfg = UIButton.Configuration.plain()
+        sendCfg.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(pointSize: 13, weight: .bold)
+        sendCfg.image = UIImage(systemName: "paperplane.fill")
+        sendCfg.baseForegroundColor = .white
+        sendCfg.background.backgroundColor = accent
+        sendCfg.background.cornerRadius = r
+        sendButton.configuration = sendCfg
+
+        inputPill.backgroundColor = .secondarySystemGroupedBackground
+        inputPill.layer.borderColor = UIColor.separator.cgColor
+    }
+
+    private func animateWithKeyboardNotification(
+        _ note: Notification,
+        animations: @escaping () -> Void,
+        completion: (() -> Void)? = nil
+    ) {
+        let userInfo = note.userInfo ?? [:]
+        let duration = (userInfo[UIResponder.keyboardAnimationDurationUserInfoKey] as? NSNumber)?.doubleValue ?? 0.25
+        let curve = (userInfo[UIResponder.keyboardAnimationCurveUserInfoKey] as? NSNumber)?.uintValue ?? 7
+        let options = UIView.AnimationOptions(rawValue: curve << 16)
+        UIView.animate(withDuration: duration, delay: 0, options: options, animations: {
+            self.view.layoutIfNeeded()
+            animations()
+        }, completion: { _ in
+            completion?()
+        })
+    }
+
+    private func keyboardOverlapHeight(from note: Notification) -> CGFloat {
+        guard let rect = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return 0 }
+        var best = max(0, view.bounds.maxY - view.convert(rect, from: nil).minY)
+        if let win = view.window {
+            best = max(best, max(0, view.bounds.maxY - view.convert(rect, from: win).minY))
+            best = max(best, max(0, view.bounds.maxY - view.convert(rect, from: win.screen.coordinateSpace).minY))
+        }
+        return best
+    }
+
+    private func keyboardOverlapFromInputBarLayout() -> CGFloat {
+        max(0, view.bounds.maxY - inputContainer.frame.maxY)
+    }
+
+    private func keyboardOverlapFromKeyboardGuide() -> CGFloat {
+        let lf = view.keyboardLayoutGuide.layoutFrame
+        guard lf.height > 0.5 || lf.minY < view.bounds.maxY - 0.5 else { return 0 }
+        return max(0, view.bounds.maxY - lf.minY)
+    }
+
+    private func updateCommentsTableBottomInset(
+        keyboardOverlap: CGFloat? = nil,
+        adjustScroll: Bool,
+        deferGrowingScroll: Bool = false
+    ) {
+        view.layoutIfNeeded()
+        let barH = inputContainer.bounds.height
+        guard barH > 0 else { return }
+
+        let fromLayout = keyboardOverlapFromInputBarLayout()
+        let fromGuide = keyboardOverlapFromKeyboardGuide()
+        let mergedLocal = max(fromLayout, fromGuide, cachedKeyboardBottomOverlap)
+        let overlap: CGFloat
+        if let k = keyboardOverlap {
+            overlap = max(k, mergedLocal)
+        } else {
+            overlap = mergedLocal
+        }
+        let obscured = overlap + barH
+        let gap = InputBarMetrics.gapLastCommentToInputBar
+        let newBottom = obscured + gap
+
+        let oldBottom = tableView.contentInset.bottom
+        let delta = newBottom - oldBottom
+
+        let oldMaxY = max(0, tableView.contentSize.height - tableView.bounds.height + oldBottom)
+        let slack = InputBarMetrics.scrollPinnedBottomSlack
+        let pinnedNearBottom = tableView.contentOffset.y >= oldMaxY - slack
+
+        var inset = tableView.contentInset
+        inset.bottom = newBottom
+        tableView.contentInset = inset
+        var ind = tableView.verticalScrollIndicatorInsets
+        ind.bottom = inset.bottom
+        tableView.verticalScrollIndicatorInsets = ind
+
+        guard adjustScroll, abs(delta) > 0.5 else { return }
+
+        let newMaxY = max(0, tableView.contentSize.height - tableView.bounds.height + newBottom)
+
+        if delta > 0 {
+            if deferGrowingScroll { return }
+            if pinnedNearBottom {
+                scrollCommentsToLastRowRespectingInset(animated: false)
+                DispatchQueue.main.async { [weak self] in
+                    self?.scrollCommentsToLastRowRespectingInset(animated: false)
+                }
+            } else {
+                tableView.contentOffset.y = min(newMaxY, tableView.contentOffset.y + delta)
+            }
+            return
+        }
+
+        if pinnedNearBottom {
+            tableView.contentOffset.y = newMaxY
+        } else {
+            var y = tableView.contentOffset.y + delta
+            y = min(newMaxY, max(0, y))
+            tableView.contentOffset.y = y
+        }
+    }
+
+    private func scrollCommentsToLastRowRespectingInset(animated: Bool) {
+        guard !comments.isEmpty else { return }
+        let ip = IndexPath(row: comments.count - 1, section: 0)
+        tableView.layoutIfNeeded()
+        guard tableView.numberOfRows(inSection: 0) > ip.row else { return }
+        tableView.scrollToRow(at: ip, at: .bottom, animated: animated)
+        DispatchQueue.main.async { [weak self] in
+            guard let self, !self.comments.isEmpty else { return }
+            let ip = IndexPath(row: self.comments.count - 1, section: 0)
+            self.tableView.layoutIfNeeded()
+            guard self.tableView.numberOfRows(inSection: 0) > ip.row else { return }
+            self.tableView.scrollToRow(at: ip, at: .bottom, animated: false)
+        }
     }
 
     private func bind() {
@@ -119,19 +370,20 @@ final class CommunityCommentsViewController: UIViewController, UITableViewDataSo
     }
 
     private func reloadAndScroll(animated: Bool) {
-        comments = store.comments(for: message.id)
+        comments = store.comments(for: rootMessage.id, threadParentCommentId: threadParentCommentId)
         tableView.reloadData()
         scrollToBottom(animated: animated)
     }
 
     private func scrollToBottom(animated: Bool) {
-        guard comments.count > 0 else { return }
-        tableView.scrollToRow(at: IndexPath(row: comments.count - 1, section: 0), at: .bottom, animated: animated)
+        updateCommentsTableBottomInset(keyboardOverlap: nil, adjustScroll: false)
+        scrollCommentsToLastRowRespectingInset(animated: animated)
     }
 
     @objc private func sendTapped() {
-        let text = inputField.text ?? ""
-        store.addComment(messageId: message.id, text: text)
+        let text = (inputField.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        store.addComment(messageId: rootMessage.id, threadParentCommentId: threadParentCommentId, text: text)
         inputField.text = ""
         textViewDidChange(inputField)
     }
@@ -143,24 +395,59 @@ final class CommunityCommentsViewController: UIViewController, UITableViewDataSo
     }
 
     func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
-        CommentCell.height(for: comments[indexPath.row], tableWidth: tableView.bounds.width)
+        CommentCell.height(
+            for: comments[indexPath.row],
+            tableWidth: tableView.bounds.width,
+            showsThreadChevron: allowsOpeningNestedThread
+        )
     }
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: CommentCell.reuseId, for: indexPath) as! CommentCell
-        cell.configure(comment: comments[indexPath.row])
+        cell.configure(comment: comments[indexPath.row], showsThreadChevron: allowsOpeningNestedThread)
+        cell.applyThreadChrome()
         return cell
+    }
+
+    func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        guard allowsOpeningNestedThread else { return }
+        tableView.deselectRow(at: indexPath, animated: true)
+        let c = comments[indexPath.row]
+        let next = CommunityCommentsViewController(message: rootMessage, threadParentCommentId: c.id)
+        navigationController?.pushViewController(next, animated: true)
     }
 
     // MARK: - UITextViewDelegate
 
+    func textViewDidBeginEditing(_ textView: UITextView) {
+        guard textView === inputField else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.updateCommentsTableBottomInset(keyboardOverlap: nil, adjustScroll: false)
+            self.scrollCommentsToLastRowRespectingInset(animated: false)
+        }
+    }
+
     func textViewDidChange(_ textView: UITextView) {
-        let size = textView.sizeThatFits(CGSize(width: textView.bounds.width, height: CGFloat.greatestFiniteMagnitude))
-        textView.isScrollEnabled = size.height > 120
+        let trimmedEmpty = (textView.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        inputPlaceholderLabel.isHidden = !trimmedEmpty
+
+        let w = max(1, textView.bounds.width)
+        let fitted = textView.sizeThatFits(CGSize(width: w, height: CGFloat.greatestFiniteMagnitude))
+        let maxTextBlock: CGFloat = 120
+        let pad = InputBarMetrics.pillInnerVerticalPadding * 2
+        let textBlockH = min(maxTextBlock, max(InputBarMetrics.minTextHeight, ceil(fitted.height)))
+        textView.isScrollEnabled = fitted.height > maxTextBlock + 0.5
+
+        textViewHeightConstraint.constant = textBlockH
+        inputPillHeightConstraint.constant = textBlockH + pad
+
         view.setNeedsLayout()
         UIView.performWithoutAnimation {
-            self.inputContainer.layoutIfNeeded()
+            self.view.layoutIfNeeded()
+            self.updateInputPillCornerRadius()
         }
+        updateCommentsTableBottomInset(keyboardOverlap: nil, adjustScroll: true)
     }
 }
 
@@ -170,6 +457,8 @@ private final class CommentCell: UITableViewCell {
     private let bubble = UIView()
     private let bodyLabel = UILabel()
     private let timeLabel = UILabel()
+    private let threadChevron = UIImageView(image: UIImage(systemName: "chevron.right"))
+    private var showsThreadChevron = true
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
@@ -190,16 +479,37 @@ private final class CommentCell: UITableViewCell {
         timeLabel.textColor = .secondaryLabel
         timeLabel.textAlignment = .right
 
+        threadChevron.contentMode = .scaleAspectFit
+        threadChevron.setContentCompressionResistancePriority(.required, for: .horizontal)
+        threadChevron.preferredSymbolConfiguration = UIImage.SymbolConfiguration(pointSize: 13, weight: .semibold)
+
+        contentView.addSubview(threadChevron)
+
         bubble.addSubview(bodyLabel)
         bubble.addSubview(timeLabel)
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    static func height(for comment: CommunityComment, tableWidth: CGFloat) -> CGFloat {
+    func applyThreadChrome() {
+        threadChevron.tintColor = MediaLibraryHeaderBannerColor.catalogChromeAccent(for: traitCollection)
+    }
+
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        applyThreadChrome()
+    }
+
+    private enum LayoutConstants {
+        static let threadChevronSlot: CGFloat = 28
+        static let bubbleToChevronGap: CGFloat = 6
+    }
+
+    static func height(for comment: CommunityComment, tableWidth: CGFloat, showsThreadChevron: Bool = true) -> CGFloat {
         let w = max(0, tableWidth)
         let side: CGFloat = 16
-        let maxCardW = w - side * 2
+        let chevronSlot = showsThreadChevron ? LayoutConstants.threadChevronSlot + LayoutConstants.bubbleToChevronGap : 0
+        let maxCardW = w - side * 2 - chevronSlot
         let padX: CGFloat = 12
         let padTop: CGFloat = 12
         let padBottom: CGFloat = 10
@@ -234,7 +544,8 @@ private final class CommentCell: UITableViewCell {
         super.layoutSubviews()
         let w = contentView.bounds.width
         let side: CGFloat = 16
-        let maxCardW = w - side * 2
+        let chevronSlot = showsThreadChevron ? LayoutConstants.threadChevronSlot + LayoutConstants.bubbleToChevronGap : 0
+        let maxCardW = w - side * 2 - chevronSlot
         let padX: CGFloat = 12
         let padTop: CGFloat = 12
         let padBottom: CGFloat = 10
@@ -276,11 +587,24 @@ private final class CommentCell: UITableViewCell {
         tw = min(tw, max(20, maxTw))
         let timeX = max(padX, bubbleW - timeTrailingInset - tw)
         timeLabel.frame = CGRect(x: timeX, y: padTop + contentBlockH - timeH, width: tw, height: timeH)
+
+        if showsThreadChevron {
+            threadChevron.isHidden = false
+            let slot = LayoutConstants.threadChevronSlot
+            let cgap = LayoutConstants.bubbleToChevronGap
+            let chevronX = min(w - side - slot, bubble.frame.maxX + cgap)
+            threadChevron.frame = CGRect(x: chevronX, y: (contentView.bounds.height - 18) / 2, width: slot, height: 18)
+        } else {
+            threadChevron.isHidden = true
+            threadChevron.frame = .zero
+        }
     }
 
-    func configure(comment: CommunityComment) {
+    func configure(comment: CommunityComment, showsThreadChevron: Bool = true) {
+        self.showsThreadChevron = showsThreadChevron
         bodyLabel.text = comment.text
         timeLabel.text = Self.shortTime(comment.createdAt)
+        threadChevron.isHidden = !showsThreadChevron
         setNeedsLayout()
     }
 
@@ -291,4 +615,3 @@ private final class CommentCell: UITableViewCell {
         return f.string(from: date)
     }
 }
-
