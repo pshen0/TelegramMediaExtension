@@ -36,6 +36,7 @@ final class MediaLibraryListViewController: UITableViewController, UISearchBarDe
     private var isUpdatingTableHeader = false
 
     private var bannerColorObserver: NSObjectProtocol?
+    private let keyboardDismissOnTapOutside = MediaLibraryKeyboardDismissOnTapOutside()
 
     init() {
         super.init(style: .plain)
@@ -64,6 +65,8 @@ final class MediaLibraryListViewController: UITableViewController, UISearchBarDe
         tableView.estimatedRowHeight = 128
         tableView.tableFooterView = UIView()
         tableView.register(MediaLibraryItemCell.self, forCellReuseIdentifier: MediaLibraryItemCell.reuseIdentifier)
+        tableView.keyboardDismissMode = .interactive
+        keyboardDismissOnTapOutside.attach(to: view)
 
         let add = UIBarButtonItem(barButtonSystemItem: .add, target: self, action: #selector(addTapped))
         overflowBarButton = UIBarButtonItem(image: UIImage(systemName: "ellipsis.circle"), style: .plain, target: nil, action: nil)

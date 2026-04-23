@@ -32,12 +32,28 @@ final class TMERouterViewController: UITableViewController {
     
     override func viewDidLoad() {
         super.viewDidLoad()
-        
-        title = "Telegram Media Extension"
+
+        configureRootNavigationTitle()
         tableView.backgroundColor = TMETheme.Colors.groupedBackground
         tableView.separatorColor = TMETheme.TableView.separatorColor
         tableView.separatorInset = TMETheme.TableView.separatorInset
         tableView.register(UITableViewCell.self, forCellReuseIdentifier: "cell")
+    }
+
+    /// Без крупного заголовка и с уменьшаемым шрифтом — строка «Telegram Media Extension» помещается на узких экранах.
+    private func configureRootNavigationTitle() {
+        navigationItem.largeTitleDisplayMode = .never
+        let label = UILabel()
+        label.text = "Telegram Media Extension"
+        label.font = TMETheme.Fonts.titleSemibold(16)
+        label.textColor = .label
+        label.textAlignment = .center
+        label.adjustsFontSizeToFitWidth = true
+        label.minimumScaleFactor = 0.45
+        label.numberOfLines = 1
+        label.baselineAdjustment = .alignCenters
+        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        navigationItem.titleView = label
     }
 
     override func viewWillAppear(_ animated: Bool) {

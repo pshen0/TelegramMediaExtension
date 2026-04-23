@@ -3,25 +3,43 @@ import PhotosUI
 import SafariServices
 import UIKit
 
-final class CommunityChatViewController: UIViewController, UITableViewDataSource, UITableViewDelegate, UITextViewDelegate {
+final class CommunityChatViewController: UIViewController, UITableViewDataSource, UITableViewDelegate, UITextViewDelegate, UIGestureRecognizerDelegate {
     private let store = CommunityStore.shared
     private let communityId: UUID
     private var cancellables = Set<AnyCancellable>()
 
     private let tableView = UITableView(frame: .zero, style: .plain)
-    private let inputContainer = UIVisualEffectView(effect: UIBlurEffect(style: .systemChromeMaterial))
-    /// Капсула вокруг поля (как в Telegram).
+    /// Панель ввода без размытия (фон прозрачный, только непрозрачные контролы).
+    private let inputContainer = UIView()
+    /// Капсула вокруг поля ввода.
     private let inputPill = UIView()
     private let inputField = UITextView()
     private let inputPlaceholderLabel = UILabel()
-    private let emojiAccessoryButton = UIButton(type: .system)
-    private let attachButton = UIButton(type: .system)
+    private let announcementButton = UIButton(type: .system)
     private let sendButton = UIButton(type: .system)
     private var inputPillHeightConstraint: NSLayoutConstraint!
     private var textViewHeightConstraint: NSLayoutConstraint!
 
+    private enum InputBarMetrics {
+        /// Диаметр круглых кнопок (анонс / отправка), совпадает с высотой однострочной капсулы.
+        static let sideDiameter: CGFloat = 32
+        static let barVerticalMargin: CGFloat = 6
+        static let pillInnerVerticalPadding: CGFloat = 5
+        static let minTextHeight: CGFloat = 20
+        static var compactPillHeight: CGFloat { minTextHeight + pillInnerVerticalPadding * 2 }
+        /// Как между двумя карточками в ленте: `CommunityMessageCell` spacingBelowCard + spacingAboveCard.
+        static let gapLastMessageToInputBar: CGFloat = 20
+    }
+
     private var messages: [CommunityMessage] = []
     private var mediaLibraryChromeObserver: NSObjectProtocol?
+    private var keyboardFrameObserver: NSObjectProtocol?
+    private lazy var dismissKeyboardTap: UITapGestureRecognizer = {
+        let t = UITapGestureRecognizer(target: self, action: #selector(handleDismissKeyboardTap))
+        t.cancelsTouchesInView = false
+        t.delegate = self
+        return t
+    }()
 
     init(communityId: UUID) {
         self.communityId = communityId
@@ -38,57 +56,48 @@ final class CommunityChatViewController: UIViewController, UITableViewDataSource
         store.loadIfNeeded()
         title = store.communities.first(where: { $0.id == communityId })?.title ?? "Сообщество"
 
-        let announceItem = UIBarButtonItem(
-            image: UIImage(systemName: "sparkles"),
-            style: .plain,
-            target: self,
-            action: #selector(newAnnouncementTapped)
-        )
-        announceItem.accessibilityLabel = "Новый анонс"
-        let editItem = UIBarButtonItem(
+        navigationItem.rightBarButtonItem = UIBarButtonItem(
             image: UIImage(systemName: "square.and.pencil"),
             style: .plain,
             target: self,
             action: #selector(editCommunityInfoTapped)
         )
-        editItem.accessibilityLabel = "Изменить"
-        navigationItem.rightBarButtonItems = [editItem, announceItem]
+        navigationItem.rightBarButtonItem?.accessibilityLabel = "Изменить"
 
         tableView.dataSource = self
         tableView.delegate = self
         tableView.separatorStyle = .none
-        tableView.backgroundColor = .systemGroupedBackground
+        tableView.backgroundColor = .clear
         tableView.keyboardDismissMode = .interactive
-        tableView.contentInset = UIEdgeInsets(top: 8, left: 0, bottom: 8, right: 0)
+        tableView.contentInsetAdjustmentBehavior = .never
+        tableView.contentInset = UIEdgeInsets(top: 8, left: 0, bottom: 0, right: 0)
         tableView.estimatedRowHeight = 140
         tableView.register(CommunityMessageCell.self, forCellReuseIdentifier: CommunityMessageCell.reuseId)
 
         view.addSubview(tableView)
         view.addSubview(inputContainer)
+        view.addGestureRecognizer(dismissKeyboardTap)
 
         tableView.pinTop(to: view.safeAreaLayoutGuide.topAnchor)
         tableView.pinLeft(to: view)
         tableView.pinRight(to: view)
-        tableView.pinBottom(to: inputContainer.topAnchor)
+        tableView.pinBottom(to: view)
 
         inputContainer.translatesAutoresizingMaskIntoConstraints = false
+        inputContainer.backgroundColor = .clear
+        inputContainer.isOpaque = false
+        inputContainer.isUserInteractionEnabled = true
         NSLayoutConstraint.activate([
             inputContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             inputContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             inputContainer.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor)
         ])
 
-        let content = inputContainer.contentView
+        let content = inputContainer
 
-        attachButton.translatesAutoresizingMaskIntoConstraints = false
-        attachButton.accessibilityLabel = "Меню вложений"
-        attachButton.showsMenuAsPrimaryAction = true
-        attachButton.menu = UIMenu(children: [
-            UIAction(title: "Новый анонс", image: UIImage(systemName: "sparkles")) { [weak self] _ in
-                self?.newAnnouncementTapped()
-            }
-        ])
-        styleCircleIconButton(attachButton, systemName: "paperclip", pointSize: 20)
+        announcementButton.translatesAutoresizingMaskIntoConstraints = false
+        announcementButton.accessibilityLabel = "Новый анонс"
+        announcementButton.addTarget(self, action: #selector(newAnnouncementTapped), for: .touchUpInside)
 
         sendButton.translatesAutoresizingMaskIntoConstraints = false
         sendButton.accessibilityLabel = "Отправить"
@@ -99,15 +108,14 @@ final class CommunityChatViewController: UIViewController, UITableViewDataSource
         if #available(iOS 13.0, *) {
             inputPill.layer.cornerCurve = .continuous
         }
-        inputPill.backgroundColor = UIColor.secondarySystemBackground.withAlphaComponent(0.72)
+        inputPill.isOpaque = true
         inputPill.layer.borderWidth = 1.0 / UIScreen.main.scale
-        inputPill.layer.borderColor = UIColor.separator.withAlphaComponent(0.4).cgColor
 
         inputField.translatesAutoresizingMaskIntoConstraints = false
         inputField.font = TMETheme.Fonts.body(16)
         inputField.backgroundColor = .clear
         inputField.textColor = .label
-        inputField.textContainerInset = UIEdgeInsets(top: 8, left: 8, bottom: 8, right: 6)
+        inputField.textContainerInset = UIEdgeInsets(top: 5, left: 8, bottom: 5, right: 8)
         inputField.textContainer.lineFragmentPadding = 0
         inputField.isScrollEnabled = false
         inputField.delegate = self
@@ -118,52 +126,38 @@ final class CommunityChatViewController: UIViewController, UITableViewDataSource
         inputPlaceholderLabel.textColor = .placeholderText
         inputPlaceholderLabel.isUserInteractionEnabled = false
 
-        emojiAccessoryButton.translatesAutoresizingMaskIntoConstraints = false
-        emojiAccessoryButton.accessibilityLabel = "Смайлики"
-        let smileCfg = UIImage.SymbolConfiguration(pointSize: 22, weight: .regular)
-        emojiAccessoryButton.setImage(UIImage(systemName: "face.smiling", withConfiguration: smileCfg), for: .normal)
-        emojiAccessoryButton.tintColor = UIColor.label.withAlphaComponent(0.85)
-        emojiAccessoryButton.addTarget(self, action: #selector(emojiAccessoryTapped), for: .touchUpInside)
-
-        content.addSubview(attachButton)
+        content.addSubview(announcementButton)
         content.addSubview(inputPill)
         content.addSubview(sendButton)
         inputPill.addSubview(inputPlaceholderLabel)
         inputPill.addSubview(inputField)
-        inputPill.addSubview(emojiAccessoryButton)
 
-        let side: CGFloat = 40
-        let sendSide: CGFloat = 44
-        let gap: CGFloat = 10
-        inputPillHeightConstraint = inputPill.heightAnchor.constraint(equalToConstant: 40)
-        textViewHeightConstraint = inputField.heightAnchor.constraint(equalToConstant: 24)
+        let side = InputBarMetrics.sideDiameter
+        let gap: CGFloat = 8
+        inputPillHeightConstraint = inputPill.heightAnchor.constraint(equalToConstant: InputBarMetrics.compactPillHeight)
+        textViewHeightConstraint = inputField.heightAnchor.constraint(equalToConstant: InputBarMetrics.minTextHeight)
 
         NSLayoutConstraint.activate([
-            attachButton.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 10),
-            attachButton.centerYAnchor.constraint(equalTo: inputPill.centerYAnchor),
-            attachButton.widthAnchor.constraint(equalToConstant: side),
-            attachButton.heightAnchor.constraint(equalToConstant: side),
+            announcementButton.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 10),
+            announcementButton.centerYAnchor.constraint(equalTo: inputPill.centerYAnchor),
+            announcementButton.widthAnchor.constraint(equalToConstant: side),
+            announcementButton.heightAnchor.constraint(equalToConstant: side),
 
             sendButton.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -10),
             sendButton.centerYAnchor.constraint(equalTo: inputPill.centerYAnchor),
-            sendButton.widthAnchor.constraint(equalToConstant: sendSide),
-            sendButton.heightAnchor.constraint(equalToConstant: sendSide),
+            sendButton.widthAnchor.constraint(equalToConstant: side),
+            sendButton.heightAnchor.constraint(equalToConstant: side),
 
-            inputPill.leadingAnchor.constraint(equalTo: attachButton.trailingAnchor, constant: gap),
+            inputPill.leadingAnchor.constraint(equalTo: announcementButton.trailingAnchor, constant: gap),
             inputPill.trailingAnchor.constraint(equalTo: sendButton.leadingAnchor, constant: -gap),
-            inputPill.topAnchor.constraint(equalTo: content.topAnchor, constant: 8),
+            inputPill.topAnchor.constraint(equalTo: content.topAnchor, constant: InputBarMetrics.barVerticalMargin),
             inputPillHeightConstraint,
-            content.bottomAnchor.constraint(equalTo: inputPill.bottomAnchor, constant: 8),
+            content.bottomAnchor.constraint(equalTo: inputPill.bottomAnchor, constant: InputBarMetrics.barVerticalMargin),
 
             inputField.leadingAnchor.constraint(equalTo: inputPill.leadingAnchor, constant: 10),
-            inputField.topAnchor.constraint(equalTo: inputPill.topAnchor, constant: 8),
-            inputField.trailingAnchor.constraint(equalTo: emojiAccessoryButton.leadingAnchor, constant: -4),
+            inputField.topAnchor.constraint(equalTo: inputPill.topAnchor, constant: InputBarMetrics.pillInnerVerticalPadding),
+            inputField.trailingAnchor.constraint(equalTo: inputPill.trailingAnchor, constant: -10),
             textViewHeightConstraint,
-
-            emojiAccessoryButton.trailingAnchor.constraint(equalTo: inputPill.trailingAnchor, constant: -8),
-            emojiAccessoryButton.centerYAnchor.constraint(equalTo: inputPill.centerYAnchor),
-            emojiAccessoryButton.widthAnchor.constraint(equalToConstant: 32),
-            emojiAccessoryButton.heightAnchor.constraint(equalToConstant: 32),
 
             inputPlaceholderLabel.leadingAnchor.constraint(equalTo: inputField.leadingAnchor, constant: 8),
             inputPlaceholderLabel.centerYAnchor.constraint(equalTo: inputField.centerYAnchor)
@@ -184,32 +178,169 @@ final class CommunityChatViewController: UIViewController, UITableViewDataSource
 
         view.layoutIfNeeded()
         textViewDidChange(inputField)
+        updateChatTableBottomInset(keyboardOverlap: nil, adjustScroll: false)
+
+        keyboardFrameObserver = NotificationCenter.default.addObserver(
+            forName: UIResponder.keyboardWillChangeFrameNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            guard let self else { return }
+            let fromFrame = self.keyboardOverlapHeight(from: note)
+            let fromGuide = max(0, self.view.bounds.maxY - self.view.keyboardLayoutGuide.layoutFrame.minY)
+            let overlap = max(fromFrame, fromGuide)
+            self.animateWithKeyboardNotification(note) {
+                self.updateChatTableBottomInset(keyboardOverlap: overlap, adjustScroll: true, deferGrowingScroll: true)
+            } completion: {
+                guard overlap > 0.5 else { return }
+                self.scrollChatToLastRowRespectingInset(animated: false)
+            }
+        }
+    }
+
+    private func animateWithKeyboardNotification(
+        _ note: Notification,
+        animations: @escaping () -> Void,
+        completion: (() -> Void)? = nil
+    ) {
+        let userInfo = note.userInfo ?? [:]
+        let duration = (userInfo[UIResponder.keyboardAnimationDurationUserInfoKey] as? NSNumber)?.doubleValue ?? 0.25
+        let curve = (userInfo[UIResponder.keyboardAnimationCurveUserInfoKey] as? NSNumber)?.uintValue ?? 7
+        let options = UIView.AnimationOptions(rawValue: curve << 16)
+        UIView.animate(withDuration: duration, delay: 0, options: options, animations: {
+            self.view.layoutIfNeeded()
+            animations()
+        }, completion: { _ in
+            completion?()
+        })
+    }
+
+    /// Высота пересечения клавиатуры с нижней частью `view` по `keyboardFrameEndUserInfoKey`.
+    private func keyboardOverlapHeight(from note: Notification) -> CGFloat {
+        guard let rect = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return 0 }
+        var best = max(0, view.bounds.maxY - view.convert(rect, from: nil).minY)
+        if let win = view.window {
+            best = max(best, max(0, view.bounds.maxY - view.convert(rect, from: win).minY))
+            best = max(best, max(0, view.bounds.maxY - view.convert(rect, from: win.screen.coordinateSpace).minY))
+        }
+        return best
+    }
+
+    /// Часть экрана под панелью ввода, занятая клавиатурой (без высоты самой панели), из текущего layout.
+    private func keyboardOverlapFromInputBarLayout() -> CGFloat {
+        max(0, view.bounds.maxY - inputContainer.frame.maxY)
+    }
+
+    /// Перекрытие клавиатурой по `keyboardLayoutGuide` (не обнуляется между кадрами анимации).
+    private func keyboardOverlapFromKeyboardGuide() -> CGFloat {
+        let lf = view.keyboardLayoutGuide.layoutFrame
+        guard lf.height > 0.5 || lf.minY < view.bounds.maxY - 0.5 else { return 0 }
+        return max(0, view.bounds.maxY - lf.minY)
+    }
+
+    /// Снизу таблицы: высота панели + пересечение с клавиатурой + отступ как между сообщениями.
+    /// - Parameter deferGrowingScroll: при росте inset (клавиатура открывается) не трогать offset здесь — прокрутка после анимации.
+    private func updateChatTableBottomInset(keyboardOverlap: CGFloat? = nil, adjustScroll: Bool, deferGrowingScroll: Bool = false) {
+        view.layoutIfNeeded()
+        let barH = inputContainer.bounds.height
+        guard barH > 0 else { return }
+
+        let fromLayout = keyboardOverlapFromInputBarLayout()
+        let fromGuide = keyboardOverlapFromKeyboardGuide()
+        let mergedLocal = max(fromLayout, fromGuide)
+        let overlap: CGFloat
+        if let k = keyboardOverlap {
+            overlap = max(k, mergedLocal)
+        } else {
+            overlap = mergedLocal
+        }
+        let obscured = overlap + barH
+        let gap = InputBarMetrics.gapLastMessageToInputBar
+        let newBottom = obscured + gap
+
+        let oldBottom = tableView.contentInset.bottom
+        let delta = newBottom - oldBottom
+
+        var inset = tableView.contentInset
+        inset.bottom = newBottom
+        tableView.contentInset = inset
+        var ind = tableView.verticalScrollIndicatorInsets
+        ind.bottom = inset.bottom
+        tableView.verticalScrollIndicatorInsets = ind
+
+        guard adjustScroll, abs(delta) > 0.5 else { return }
+
+        let newMaxY = max(0, tableView.contentSize.height - tableView.bounds.height + newBottom)
+
+        if delta > 0 {
+            if !deferGrowingScroll {
+                scrollChatToLastRowRespectingInset(animated: false)
+            }
+            return
+        }
+
+        let oldMaxY = max(0, tableView.contentSize.height - tableView.bounds.height + oldBottom)
+        let wasAtBottom = tableView.contentOffset.y >= oldMaxY - 4
+
+        if wasAtBottom {
+            tableView.contentOffset.y = newMaxY
+        } else {
+            var y = tableView.contentOffset.y + delta
+            y = min(newMaxY, max(0, y))
+            tableView.contentOffset.y = y
+        }
+    }
+
+    /// Прокрутка к последнему сообщению с учётом `contentInset` (над панелью и клавиатурой).
+    private func scrollChatToLastRowRespectingInset(animated: Bool) {
+        guard !messages.isEmpty else { return }
+        let ip = IndexPath(row: messages.count - 1, section: 0)
+        tableView.layoutIfNeeded()
+        guard tableView.numberOfRows(inSection: 0) > ip.row else { return }
+        tableView.scrollToRow(at: ip, at: .bottom, animated: animated)
+        DispatchQueue.main.async { [weak self] in
+            guard let self, !self.messages.isEmpty else { return }
+            let ip = IndexPath(row: self.messages.count - 1, section: 0)
+            self.tableView.layoutIfNeeded()
+            guard self.tableView.numberOfRows(inSection: 0) > ip.row else { return }
+            self.tableView.scrollToRow(at: ip, at: .bottom, animated: false)
+        }
+    }
+
+    @objc private func handleDismissKeyboardTap() {
+        guard inputField.isFirstResponder else { return }
+        inputField.resignFirstResponder()
+    }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        guard gestureRecognizer === dismissKeyboardTap else { return true }
+        var v: UIView? = touch.view
+        while let cur = v {
+            if cur === inputContainer || cur.isDescendant(of: inputContainer) { return false }
+            if cur is UIButton { return false }
+            v = cur.superview
+        }
+        return true
+    }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+        true
     }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        updateChatTableBottomInset(keyboardOverlap: nil, adjustScroll: false)
         let h = inputPill.bounds.height
         guard h > 1 else { return }
         inputPill.layer.cornerRadius = h * 0.5
     }
 
-    private func styleCircleIconButton(_ button: UIButton, systemName: String, pointSize: CGFloat) {
-        var cfg = UIButton.Configuration.plain()
-        cfg.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(pointSize: pointSize, weight: .medium)
-        cfg.image = UIImage(systemName: systemName)
-        cfg.baseForegroundColor = .label
-        cfg.background.backgroundColor = UIColor.tertiarySystemFill
-        cfg.background.cornerRadius = 20
-        button.configuration = cfg
-    }
-
-    @objc private func emojiAccessoryTapped() {
-        inputField.becomeFirstResponder()
-    }
-
     deinit {
         if let mediaLibraryChromeObserver {
             NotificationCenter.default.removeObserver(mediaLibraryChromeObserver)
+        }
+        if let keyboardFrameObserver {
+            NotificationCenter.default.removeObserver(keyboardFrameObserver)
         }
     }
 
@@ -223,15 +354,25 @@ final class CommunityChatViewController: UIViewController, UITableViewDataSource
 
     private func applyMediaLibraryChromeToInputBar() {
         let accent = MediaLibraryHeaderBannerColor.catalogChromeAccent(for: traitCollection)
+        let d = InputBarMetrics.sideDiameter
+        let r = d / 2
         var sendCfg = UIButton.Configuration.plain()
-        sendCfg.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(pointSize: 15, weight: .bold)
+        sendCfg.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(pointSize: 13, weight: .bold)
         sendCfg.image = UIImage(systemName: "paperplane.fill")
         sendCfg.baseForegroundColor = .white
         sendCfg.background.backgroundColor = accent
-        sendCfg.background.cornerRadius = 22
+        sendCfg.background.cornerRadius = r
         sendButton.configuration = sendCfg
 
-        inputPill.layer.borderColor = UIColor.separator.withAlphaComponent(0.4).cgColor
+        var annCfg = UIButton.Configuration.plain()
+        annCfg.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(pointSize: 17, weight: .medium)
+        annCfg.image = UIImage(systemName: "sparkles")
+        annCfg.baseForegroundColor = accent
+        annCfg.background.backgroundColor = .clear
+        announcementButton.configuration = annCfg
+
+        inputPill.backgroundColor = .secondarySystemGroupedBackground
+        inputPill.layer.borderColor = UIColor.separator.cgColor
     }
 
     private func bind() {
@@ -266,9 +407,8 @@ final class CommunityChatViewController: UIViewController, UITableViewDataSource
     }
 
     private func scrollToBottom(animated: Bool) {
-        guard messages.count > 0 else { return }
-        let ip = IndexPath(row: messages.count - 1, section: 0)
-        tableView.scrollToRow(at: ip, at: .bottom, animated: animated)
+        updateChatTableBottomInset(keyboardOverlap: nil, adjustScroll: false)
+        scrollChatToLastRowRespectingInset(animated: animated)
     }
 
     @objc private func editCommunityInfoTapped() {
@@ -329,6 +469,15 @@ final class CommunityChatViewController: UIViewController, UITableViewDataSource
 
     // MARK: - UITextViewDelegate
 
+    func textViewDidBeginEditing(_ textView: UITextView) {
+        guard textView === inputField else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.updateChatTableBottomInset(keyboardOverlap: nil, adjustScroll: false)
+            self.scrollChatToLastRowRespectingInset(animated: false)
+        }
+    }
+
     func textViewDidChange(_ textView: UITextView) {
         let trimmedEmpty = (textView.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         inputPlaceholderLabel.isHidden = !trimmedEmpty
@@ -336,11 +485,12 @@ final class CommunityChatViewController: UIViewController, UITableViewDataSource
         let w = max(1, textView.bounds.width)
         let fitted = textView.sizeThatFits(CGSize(width: w, height: CGFloat.greatestFiniteMagnitude))
         let maxTextBlock: CGFloat = 120
-        let textBlockH = min(maxTextBlock, max(24, ceil(fitted.height)))
+        let pad = InputBarMetrics.pillInnerVerticalPadding * 2
+        let textBlockH = min(maxTextBlock, max(InputBarMetrics.minTextHeight, ceil(fitted.height)))
         textView.isScrollEnabled = fitted.height > maxTextBlock + 0.5
 
         textViewHeightConstraint.constant = textBlockH
-        inputPillHeightConstraint.constant = textBlockH + 16
+        inputPillHeightConstraint.constant = textBlockH + pad
 
         view.setNeedsLayout()
         UIView.performWithoutAnimation {
@@ -350,6 +500,7 @@ final class CommunityChatViewController: UIViewController, UITableViewDataSource
                 self.inputPill.layer.cornerRadius = h * 0.5
             }
         }
+        updateChatTableBottomInset(keyboardOverlap: nil, adjustScroll: false)
     }
 }
 
@@ -537,6 +688,21 @@ private final class EditCommunityProfileViewController: UIViewController, UIText
 private final class CommunityMessageCell: UITableViewCell {
     static let reuseId = "CommunityMessageCell"
 
+    /// Вертикальные отступы между карточками в ленте (одинаково для поста и анонса).
+    private enum LayoutMetrics {
+        static let spacingAboveCard: CGFloat = 10
+        static let spacingBelowCard: CGFloat = 10
+        static let horizontalInset: CGFloat = 16
+        static let announcementInnerTop: CGFloat = 10
+        static let announcementImageHeight: CGFloat = 180
+        static let announcementImageBottomGap: CGFloat = 10
+        static let titleBodyGap: CGFloat = 8
+        static let bodyBottomGap: CGFloat = 10
+        static let linkBottomGap: CGFloat = 6
+        static let footerRowHeight: CGFloat = 22
+        static let footerBottomPadding: CGFloat = 10
+    }
+
     var onSaveAnnouncement: ((CommunityMessage) -> Void)?
     var onOpenComments: ((CommunityMessage) -> Void)?
     var onOpenLink: ((URL) -> Void)?
@@ -662,7 +828,7 @@ private final class CommunityMessageCell: UITableViewCell {
 
     static func height(for message: CommunityMessage, tableWidth: CGFloat) -> CGFloat {
         let w = max(0, tableWidth)
-        let side: CGFloat = 16
+        let side = LayoutMetrics.horizontalInset
         let maxCardW = w - side * 2
         if message.kind == .post {
             let text = message.text
@@ -704,17 +870,19 @@ private final class CommunityMessageCell: UITableViewCell {
             let contentBlockH = max(textH, timeH)
             let bubbleH = padTop + contentBlockH + sepGapTop + sepH + sepGapBottom + stripH + padBottom
 
-            return 6 + bubbleH + 6
+            return LayoutMetrics.spacingAboveCard + bubbleH + LayoutMetrics.spacingBelowCard
         }
 
-        var y: CGFloat = 10
+        var y: CGFloat = LayoutMetrics.announcementInnerTop
         let bw = maxCardW
         let a = message.announcement
         let imgExists: Bool = {
             guard let name = a?.imageFileName, let u = CommunityStore.announcementImageURL(fileName: name) else { return false }
             return FileManager.default.fileExists(atPath: u.path)
         }()
-        if imgExists { y += 180 + 10 }
+        if imgExists {
+            y += LayoutMetrics.announcementImageHeight + LayoutMetrics.announcementImageBottomGap
+        }
 
         let title = "Анонс" + (a?.title.isEmpty == false ? ": \(a!.title)" : "")
         let titleH = ceil((title as NSString).boundingRect(
@@ -723,7 +891,7 @@ private final class CommunityMessageCell: UITableViewCell {
             attributes: [.font: TMETheme.Fonts.titleSemibold(15)],
             context: nil
         ).height)
-        y += titleH + 8
+        y += titleH + LayoutMetrics.titleBodyGap
 
         let bodyText = (a?.details?.isEmpty == false ? a!.details : message.text) ?? ""
         let bh = ceil((bodyText as NSString).boundingRect(
@@ -732,7 +900,7 @@ private final class CommunityMessageCell: UITableViewCell {
             attributes: [.font: TMETheme.Fonts.body(15)],
             context: nil
         ).height)
-        y += max(1, bh) + 10
+        y += max(1, bh) + LayoutMetrics.bodyBottomGap
 
         if let link = a?.linkURL?.trimmingCharacters(in: .whitespacesAndNewlines), !link.isEmpty {
             let t = "Ссылка: \(link)"
@@ -741,18 +909,17 @@ private final class CommunityMessageCell: UITableViewCell {
                 options: [.usesLineFragmentOrigin, .usesFontLeading],
                 attributes: [.font: TMETheme.Fonts.body(13)],
                 context: nil
-            ).height) + 6
+            ).height) + LayoutMetrics.linkBottomGap
         }
-        // Одна строка: «Место» + время (или только время)
-        y += 22 + 10
-        return 6 + y
+        y += LayoutMetrics.footerRowHeight + LayoutMetrics.footerBottomPadding
+        return LayoutMetrics.spacingAboveCard + y + LayoutMetrics.spacingBelowCard
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
         guard let message else { return }
         let w = contentView.bounds.width
-        let side: CGFloat = 16
+        let side = LayoutMetrics.horizontalInset
         let maxCardW = w - side * 2
 
         if message.kind == .post {
@@ -802,7 +969,7 @@ private final class CommunityMessageCell: UITableViewCell {
             let contentBlockH = max(textH, timeH)
             let bubbleH = padTop + contentBlockH + sepGapTop + sepH + sepGapBottom + stripH + padBottom
 
-            postBubble.frame = CGRect(x: side, y: 6, width: bubbleW, height: bubbleH)
+            postBubble.frame = CGRect(x: side, y: LayoutMetrics.spacingAboveCard, width: bubbleW, height: bubbleH)
 
             bodyLabel.frame = CGRect(x: padX, y: padTop, width: textMaxW, height: textH)
 
@@ -832,22 +999,22 @@ private final class CommunityMessageCell: UITableViewCell {
             bubble.isHidden = false
             postBubble.isHidden = true
 
-            var y: CGFloat = 10
+            var y: CGFloat = LayoutMetrics.announcementInnerTop
             let x: CGFloat = side
             let bw = maxCardW
 
             let hasImage = !announcementImageView.isHidden && announcementImageView.image != nil
             if hasImage {
-                let ih: CGFloat = 180
+                let ih = LayoutMetrics.announcementImageHeight
                 announcementImageView.frame = CGRect(x: 10, y: y, width: bw - 20, height: ih)
-                y = announcementImageView.frame.maxY + 10
+                y = announcementImageView.frame.maxY + LayoutMetrics.announcementImageBottomGap
             } else {
                 announcementImageView.frame = .zero
             }
 
             let titleH = titleLabel.sizeThatFits(CGSize(width: bw - 24, height: 200)).height
             titleLabel.frame = CGRect(x: 12, y: y, width: bw - 24, height: ceil(titleH))
-            y = titleLabel.frame.maxY + 8
+            y = titleLabel.frame.maxY + LayoutMetrics.titleBodyGap
 
             let bodyText = bodyLabel.text ?? ""
             let bodyRect = (bodyText as NSString).boundingRect(
@@ -858,13 +1025,13 @@ private final class CommunityMessageCell: UITableViewCell {
             )
             let bh = ceil(bodyRect.height)
             bodyLabel.frame = CGRect(x: 12, y: y, width: bw - 24, height: max(1, bh))
-            y = bodyLabel.frame.maxY + 10
+            y = bodyLabel.frame.maxY + LayoutMetrics.bodyBottomGap
 
             if !linkButton.isHidden {
                 linkButton.titleLabel?.numberOfLines = 2
                 let linkSize = linkButton.sizeThatFits(CGSize(width: bw - 24, height: 120))
                 linkButton.frame = CGRect(x: 12, y: y, width: bw - 24, height: ceil(linkSize.height))
-                y = linkButton.frame.maxY + 6
+                y = linkButton.frame.maxY + LayoutMetrics.linkBottomGap
             } else {
                 linkButton.frame = .zero
             }
@@ -872,7 +1039,7 @@ private final class CommunityMessageCell: UITableViewCell {
             let annInset: CGFloat = 12
             let timeTrailingInset: CGFloat = 14
             let footerGap: CGFloat = 8
-            let footerH: CGFloat = 22
+            let footerH = LayoutMetrics.footerRowHeight
 
             timeLabel.sizeToFit()
             let timeMeasured = max(ceil(timeLabel.intrinsicContentSize.width), ceil(timeLabel.bounds.width))
@@ -896,9 +1063,9 @@ private final class CommunityMessageCell: UITableViewCell {
                 timeLabel.frame = CGRect(x: timeX, y: y, width: tw, height: footerH)
             }
 
-            y += footerH + 10
+            y += footerH + LayoutMetrics.footerBottomPadding
 
-            bubble.frame = CGRect(x: x, y: 6, width: bw, height: y)
+            bubble.frame = CGRect(x: x, y: LayoutMetrics.spacingAboveCard, width: bw, height: y)
         }
     }
 

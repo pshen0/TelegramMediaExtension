@@ -67,7 +67,6 @@ final class CommunityListViewController: UITableViewController {
     @objc private func addCommunityTapped() {
         let ac = UIAlertController(title: "Новое сообщество", message: "Название", preferredStyle: .alert)
         ac.addTextField { tf in
-            tf.placeholder = "Например: Dune (книга)"
             tf.autocapitalizationType = .sentences
         }
         ac.addAction(UIAlertAction(title: "Отмена", style: .cancel))

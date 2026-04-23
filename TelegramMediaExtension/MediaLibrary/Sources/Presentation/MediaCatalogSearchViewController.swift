@@ -7,11 +7,13 @@ final class MediaCatalogSearchViewController: UITableViewController, UISearchBar
     private let searchBar = UISearchBar()
     private var results: [MediaCatalogCandidate] = []
     private var searchTask: Task<Void, Never>?
+    private let keyboardDismissOnTapOutside = MediaLibraryKeyboardDismissOnTapOutside()
 
     override func viewDidLoad() {
         super.viewDidLoad()
         tableView.register(UITableViewCell.self, forCellReuseIdentifier: "cand")
-        tableView.keyboardDismissMode = .onDrag
+        tableView.keyboardDismissMode = .interactive
+        keyboardDismissOnTapOutside.attach(to: view)
 
         searchBar.placeholder = "Название фильма, сериала, книги…"
         searchBar.delegate = self

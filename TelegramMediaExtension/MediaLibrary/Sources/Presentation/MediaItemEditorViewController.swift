@@ -21,6 +21,7 @@ final class MediaItemEditorViewController: UITableViewController {
     private let onSave: (MediaItem) -> Void
 
     private var item: MediaItem
+    private let keyboardDismissOnTapOutside = MediaLibraryKeyboardDismissOnTapOutside()
 
     private enum Section: Int, CaseIterable {
         case main
@@ -56,6 +57,8 @@ final class MediaItemEditorViewController: UITableViewController {
         tableView.backgroundColor = TMETheme.Colors.groupedBackground
         tableView.rowHeight = UITableView.automaticDimension
         tableView.estimatedRowHeight = 52
+        tableView.keyboardDismissMode = .interactive
+        keyboardDismissOnTapOutside.attach(to: view)
 
         navigationItem.rightBarButtonItem = UIBarButtonItem(title: "Сохранить", style: .done, target: self, action: #selector(saveTapped))
     }
