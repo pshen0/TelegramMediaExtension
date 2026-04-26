@@ -235,6 +235,47 @@ final class CommunityStore: ObservableObject {
         persist()
     }
 
+    /// Создаёт личный анонс (без привязки к сообществу) в разделе «Мои анонсы».
+    func addPersonalAnnouncement(
+        title: String,
+        date: Date,
+        details: String?,
+        imageFileName: String? = nil,
+        linkURL: String? = nil,
+        location: CommunityLocation? = nil
+    ) {
+        loadIfNeeded()
+        let t = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { return }
+
+        let fp = Self.announcementFingerprint(
+            title: t,
+            date: date,
+            details: details?.trimmingCharacters(in: .whitespacesAndNewlines),
+            imageFileName: imageFileName,
+            linkURL: linkURL,
+            location: location
+        )
+        if savedAnnouncements.contains(where: { Self.savedFingerprint($0) == fp }) {
+            return
+        }
+
+        savedAnnouncements.append(
+            SavedAnnouncement(
+                sourceCommunityId: nil,
+                sourceMessageId: nil,
+                title: t,
+                date: date,
+                details: details?.trimmingCharacters(in: .whitespacesAndNewlines),
+                imageFileName: imageFileName,
+                linkURL: linkURL,
+                location: location
+            )
+        )
+        savedAnnouncements.sort { $0.date < $1.date }
+        persist()
+    }
+
     func saveAnnouncementFromMessage(_ message: CommunityMessage) {
         loadIfNeeded()
         guard message.kind == .announcement, let a = message.announcement else { return }
@@ -265,6 +306,47 @@ final class CommunityStore: ObservableObject {
         loadIfNeeded()
         savedAnnouncements.removeAll(where: { $0.id == id })
         persist()
+    }
+
+    func updateSavedAnnouncement(
+        id: UUID,
+        title: String,
+        date: Date,
+        details: String?,
+        imageFileName: String?,
+        linkURL: String?,
+        location: CommunityLocation?
+    ) {
+        loadIfNeeded()
+        guard let i = savedAnnouncements.firstIndex(where: { $0.id == id }) else { return }
+        let t = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { return }
+
+        let old = savedAnnouncements[i]
+        let oldImage = old.imageFileName
+        var next = old
+        next.title = t
+        next.date = date
+        let trimmedDetails = details?.trimmingCharacters(in: .whitespacesAndNewlines)
+        next.details = (trimmedDetails?.isEmpty == false) ? trimmedDetails : nil
+        next.imageFileName = imageFileName
+        let trimmedLink = linkURL?.trimmingCharacters(in: .whitespacesAndNewlines)
+        next.linkURL = (trimmedLink?.isEmpty == false) ? trimmedLink : nil
+        next.location = location
+
+        if let oldName = oldImage, oldName != next.imageFileName, let url = Self.announcementImageURL(fileName: oldName) {
+            try? FileManager.default.removeItem(at: url)
+        }
+
+        savedAnnouncements[i] = next
+        savedAnnouncements.sort { $0.date < $1.date }
+        persist()
+    }
+
+    func communityTitle(id: UUID?) -> String? {
+        guard let id else { return nil }
+        loadIfNeeded()
+        return communities.first(where: { $0.id == id })?.title
     }
 
     private static func announcementFingerprint(

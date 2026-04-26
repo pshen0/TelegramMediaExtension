@@ -12,6 +12,8 @@ final class CommunityCommentsViewController: UIViewController, UITableViewDataSo
         static let multilinePillMaxCornerRadius: CGFloat = 20
         static let gapLastCommentToInputBar: CGFloat = 10
         static let scrollPinnedBottomSlack: CGFloat = 48
+        /// Доп. отступ контента под размытый навбар (как был `contentInset.top` при привязке к safe area).
+        static let tableTopExtraPadding: CGFloat = 8
     }
 
     private let store = CommunityStore.shared
@@ -63,7 +65,7 @@ final class CommunityCommentsViewController: UIViewController, UITableViewDataSo
         tableView.backgroundColor = .clear
         tableView.keyboardDismissMode = .interactive
         tableView.contentInsetAdjustmentBehavior = .never
-        tableView.contentInset = UIEdgeInsets(top: 8, left: 0, bottom: 0, right: 0)
+        tableView.contentInset = .zero
         tableView.estimatedRowHeight = 72
         tableView.register(CommentCell.self, forCellReuseIdentifier: CommentCell.reuseId)
 
@@ -71,7 +73,7 @@ final class CommunityCommentsViewController: UIViewController, UITableViewDataSo
         view.addSubview(inputContainer)
         keyboardDismissOnTapOutside.attach(to: view)
 
-        tableView.pinTop(to: view.safeAreaLayoutGuide.topAnchor)
+        tableView.pinTop(to: view.topAnchor)
         tableView.pinLeft(to: view)
         tableView.pinRight(to: view)
         tableView.pinBottom(to: view)
@@ -153,6 +155,7 @@ final class CommunityCommentsViewController: UIViewController, UITableViewDataSo
             queue: .main
         ) { [weak self] _ in
             self?.applyMediaLibraryChromeToInputBar()
+            self?.applyCommentsNavigationAppearance()
         }
 
         bind()
@@ -209,8 +212,24 @@ final class CommunityCommentsViewController: UIViewController, UITableViewDataSo
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        updateCommentsTableTopInset()
         updateCommentsTableBottomInset(keyboardOverlap: nil, adjustScroll: false)
         updateInputPillCornerRadius()
+    }
+
+    override func viewSafeAreaInsetsDidChange() {
+        super.viewSafeAreaInsetsDidChange()
+        updateCommentsTableTopInset()
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        applyCommentsNavigationAppearance()
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        restoreCommentsNavigationAppearance()
     }
 
     private func updateInputPillCornerRadius() {
@@ -228,6 +247,57 @@ final class CommunityCommentsViewController: UIViewController, UITableViewDataSo
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
         applyMediaLibraryChromeToInputBar()
+        applyCommentsNavigationAppearance()
+    }
+
+    /// Как у корневого меню и форм медиатеки: стандартный материал с размытием (`configureWithDefaultBackground`).
+    private func commentsNavigationBarAppearance() -> UINavigationBarAppearance {
+        let appearance = UINavigationBarAppearance()
+        appearance.configureWithDefaultBackground()
+        appearance.titleTextAttributes = [.foregroundColor: UIColor.label]
+        return appearance
+    }
+
+    private func applyCommentsNavigationAppearance() {
+        let appearance = commentsNavigationBarAppearance()
+        navigationItem.standardAppearance = appearance
+        navigationItem.scrollEdgeAppearance = appearance
+        navigationItem.compactAppearance = appearance
+        if #available(iOS 15.0, *) {
+            navigationItem.compactScrollEdgeAppearance = appearance
+        }
+        let accent = MediaLibraryHeaderBannerColor.catalogChromeAccent(for: traitCollection)
+        navigationController?.navigationBar.tintColor = accent
+    }
+
+    private func restoreCommentsNavigationAppearance() {
+        navigationItem.standardAppearance = nil
+        navigationItem.scrollEdgeAppearance = nil
+        navigationItem.compactAppearance = nil
+        if #available(iOS 15.0, *) {
+            navigationItem.compactScrollEdgeAppearance = nil
+        }
+    }
+
+    /// Как список «Сообщества»: контент уходит под навбар и виден через размытие.
+    private func updateCommentsTableTopInset() {
+        let newTop = view.safeAreaInsets.top + InputBarMetrics.tableTopExtraPadding
+        let oldTop = tableView.contentInset.top
+        guard abs(newTop - oldTop) > 0.25 else { return }
+        let delta = newTop - oldTop
+        var inset = tableView.contentInset
+        inset.top = newTop
+        tableView.contentInset = inset
+        var ind = tableView.verticalScrollIndicatorInsets
+        ind.top = newTop
+        tableView.verticalScrollIndicatorInsets = ind
+        var y = tableView.contentOffset.y + delta
+        let maxY = max(
+            0,
+            tableView.contentSize.height - tableView.bounds.height + tableView.contentInset.bottom
+        )
+        y = min(max(0, y), maxY)
+        tableView.contentOffset.y = y
     }
 
     private func applyMediaLibraryChromeToInputBar() {
@@ -468,7 +538,8 @@ private final class CommentCell: UITableViewCell {
 
         bubble.layer.cornerRadius = 16
         if #available(iOS 13.0, *) { bubble.layer.cornerCurve = .continuous }
-        bubble.backgroundColor = .secondarySystemBackground
+        /// На светлой теме `secondarySystemBackground` почти сливается с `systemGroupedBackground` экрана.
+        bubble.backgroundColor = .secondarySystemGroupedBackground
         contentView.addSubview(bubble)
 
         bodyLabel.font = TMETheme.Fonts.body(15)

@@ -33,6 +33,8 @@ final class CommunityChatViewController: UIViewController, UITableViewDataSource
         static let gapLastMessageToInputBar: CGFloat = 10
         /// Зона «как у нижнего края» при открытой клавиатуре (избегаем ложного «не в конце» из‑за округления).
         static let scrollPinnedBottomSlack: CGFloat = 48
+        /// Доп. отступ контента под размытый навбар (как был `contentInset.top` при привязке к safe area).
+        static let tableTopExtraPadding: CGFloat = 8
     }
 
     private var messages: [CommunityMessage] = []
@@ -77,7 +79,7 @@ final class CommunityChatViewController: UIViewController, UITableViewDataSource
         tableView.backgroundColor = .clear
         tableView.keyboardDismissMode = .interactive
         tableView.contentInsetAdjustmentBehavior = .never
-        tableView.contentInset = UIEdgeInsets(top: 8, left: 0, bottom: 0, right: 0)
+        tableView.contentInset = .zero
         tableView.estimatedRowHeight = 140
         tableView.register(CommunityMessageCell.self, forCellReuseIdentifier: CommunityMessageCell.reuseId)
 
@@ -85,7 +87,7 @@ final class CommunityChatViewController: UIViewController, UITableViewDataSource
         view.addSubview(inputContainer)
         view.addGestureRecognizer(dismissKeyboardTap)
 
-        tableView.pinTop(to: view.safeAreaLayoutGuide.topAnchor)
+        tableView.pinTop(to: view.topAnchor)
         tableView.pinLeft(to: view)
         tableView.pinRight(to: view)
         tableView.pinBottom(to: view)
@@ -177,6 +179,7 @@ final class CommunityChatViewController: UIViewController, UITableViewDataSource
             queue: .main
         ) { [weak self] _ in
             self?.applyMediaLibraryChromeToInputBar()
+            self?.applyChatNavigationAppearance()
             self?.tableView.reloadData()
         }
 
@@ -354,8 +357,73 @@ final class CommunityChatViewController: UIViewController, UITableViewDataSource
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        updateChatTableTopInset()
         updateChatTableBottomInset(keyboardOverlap: nil, adjustScroll: false)
         updateInputPillCornerRadius()
+    }
+
+    override func viewSafeAreaInsetsDidChange() {
+        super.viewSafeAreaInsetsDidChange()
+        updateChatTableTopInset()
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        applyChatNavigationAppearance()
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        restoreChatNavigationAppearance()
+    }
+
+    /// Как список «Сообщества»: контент уходит под навбар и виден через размытие, а не под сплошную подложку.
+    private func updateChatTableTopInset() {
+        let newTop = view.safeAreaInsets.top + InputBarMetrics.tableTopExtraPadding
+        let oldTop = tableView.contentInset.top
+        guard abs(newTop - oldTop) > 0.25 else { return }
+        let delta = newTop - oldTop
+        var inset = tableView.contentInset
+        inset.top = newTop
+        tableView.contentInset = inset
+        var ind = tableView.verticalScrollIndicatorInsets
+        ind.top = newTop
+        tableView.verticalScrollIndicatorInsets = ind
+        var y = tableView.contentOffset.y + delta
+        let maxY = max(
+            0,
+            tableView.contentSize.height - tableView.bounds.height + tableView.contentInset.bottom
+        )
+        y = min(max(0, y), maxY)
+        tableView.contentOffset.y = y
+    }
+
+    private func communityThreadNavigationBarAppearance() -> UINavigationBarAppearance {
+        let appearance = UINavigationBarAppearance()
+        appearance.configureWithDefaultBackground()
+        appearance.titleTextAttributes = [.foregroundColor: UIColor.label]
+        return appearance
+    }
+
+    private func applyChatNavigationAppearance() {
+        let appearance = communityThreadNavigationBarAppearance()
+        navigationItem.standardAppearance = appearance
+        navigationItem.scrollEdgeAppearance = appearance
+        navigationItem.compactAppearance = appearance
+        if #available(iOS 15.0, *) {
+            navigationItem.compactScrollEdgeAppearance = appearance
+        }
+        let accent = MediaLibraryHeaderBannerColor.catalogChromeAccent(for: traitCollection)
+        navigationController?.navigationBar.tintColor = accent
+    }
+
+    private func restoreChatNavigationAppearance() {
+        navigationItem.standardAppearance = nil
+        navigationItem.scrollEdgeAppearance = nil
+        navigationItem.compactAppearance = nil
+        if #available(iOS 15.0, *) {
+            navigationItem.compactScrollEdgeAppearance = nil
+        }
     }
 
     private func updateInputPillCornerRadius() {
@@ -385,6 +453,7 @@ final class CommunityChatViewController: UIViewController, UITableViewDataSource
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
         applyMediaLibraryChromeToInputBar()
+        applyChatNavigationAppearance()
         for case let cell as CommunityMessageCell in tableView.visibleCells {
             cell.applyMediaLibraryChromeColors()
         }
@@ -826,8 +895,9 @@ private final class CommunityMessageCell: UITableViewCell {
             v.layer.cornerRadius = 16
             if #available(iOS 13.0, *) { v.layer.cornerCurve = .continuous }
         }
-        bubble.backgroundColor = .secondarySystemBackground
-        postBubble.backgroundColor = .secondarySystemBackground
+        /// Как у комментариев: на `systemGroupedBackground` не сливаться со страницей.
+        bubble.backgroundColor = .secondarySystemGroupedBackground
+        postBubble.backgroundColor = .secondarySystemGroupedBackground
 
         postDivider.backgroundColor = UIColor.separator.withAlphaComponent(0.55)
 
@@ -975,14 +1045,16 @@ private final class CommunityMessageCell: UITableViewCell {
         let textInset = LayoutMetrics.announcementTextSideInset
         let textContentW = bw - textInset * 2
 
-        var y: CGFloat = LayoutMetrics.announcementInnerTop
         let a = message.announcement
         let imgExists: Bool = {
             guard let name = a?.imageFileName, let u = CommunityStore.announcementImageURL(fileName: name) else { return false }
             return FileManager.default.fileExists(atPath: u.path)
         }()
+        var y: CGFloat
         if imgExists {
-            y += LayoutMetrics.announcementImageHeight + LayoutMetrics.announcementImageBottomGap
+            y = LayoutMetrics.announcementImageSideInset + LayoutMetrics.announcementImageHeight + LayoutMetrics.announcementImageBottomGap
+        } else {
+            y = LayoutMetrics.announcementInnerTop
         }
 
         let title = "Анонс" + (a?.title.isEmpty == false ? ": \(a!.title)" : "")
@@ -1095,7 +1167,6 @@ private final class CommunityMessageCell: UITableViewCell {
             bubble.isHidden = false
             postBubble.isHidden = true
 
-            var y: CGFloat = LayoutMetrics.announcementInnerTop
             let x: CGFloat = side
             let bw = maxCardW
             let textInset = LayoutMetrics.announcementTextSideInset
@@ -1103,6 +1174,7 @@ private final class CommunityMessageCell: UITableViewCell {
             let imgSide = LayoutMetrics.announcementImageSideInset
 
             let hasImage = !announcementImageView.isHidden && announcementImageView.image != nil
+            var y: CGFloat = hasImage ? imgSide : LayoutMetrics.announcementInnerTop
             if hasImage {
                 let ih = LayoutMetrics.announcementImageHeight
                 announcementImageView.frame = CGRect(x: imgSide, y: y, width: bw - imgSide * 2, height: ih)

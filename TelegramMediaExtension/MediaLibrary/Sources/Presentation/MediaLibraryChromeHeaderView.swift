@@ -25,6 +25,15 @@ final class MediaLibraryChromeHeaderView: UIView {
 
     private(set) var showsSearchDismissButton = false
 
+    /// Если `false`, блок вкладок под поиском скрыт (например, экран «Анонсы» в медиатеке).
+    var showsFolderTabs: Bool = true {
+        didSet {
+            guard showsFolderTabs != oldValue else { return }
+            tabsCardShadowContainer.isHidden = !showsFolderTabs
+            setNeedsLayout()
+        }
+    }
+
     func setShowsSearchDismiss(_ visible: Bool, animated: Bool) {
         guard visible != showsSearchDismissButton else { return }
 
@@ -81,8 +90,13 @@ final class MediaLibraryChromeHeaderView: UIView {
         let searchAvailW = width - Self.searchHorizontalInset * 2 - dismissReserve
         let searchSize = searchBar.sizeThatFits(CGSize(width: max(120, searchAvailW), height: 120))
         let searchH = max(Self.searchMinHeight, searchSize.height)
-        let tabsCardH = MediaLibraryFolderTabsView.preferredHeight + Self.tabsCardVerticalPadding * 2
-        let raw = gradientH + Self.searchTopSpacing + searchH + Self.searchToTabsSpacing + tabsCardH
+        let raw: CGFloat
+        if showsFolderTabs {
+            let tabsCardH = MediaLibraryFolderTabsView.preferredHeight + Self.tabsCardVerticalPadding * 2
+            raw = gradientH + Self.searchTopSpacing + searchH + Self.searchToTabsSpacing + tabsCardH
+        } else {
+            raw = gradientH + Self.searchTopSpacing + searchH + 10
+        }
         return ceil(raw * UIScreen.main.scale) / UIScreen.main.scale
     }
 
@@ -179,6 +193,7 @@ final class MediaLibraryChromeHeaderView: UIView {
         tabsCardShadowContainer.layer.shadowOffset = CGSize(width: 0, height: 3)
         tabsCardShadowContainer.layer.shadowRadius = 12
         addSubview(tabsCardShadowContainer)
+        tabsCardShadowContainer.isHidden = !showsFolderTabs
 
         tabsCardClipView.backgroundColor = cardBackgroundColor()
         tabsCardClipView.layer.cornerRadius = 18
@@ -315,18 +330,24 @@ final class MediaLibraryChromeHeaderView: UIView {
         searchDismissContainer.bounds = CGRect(x: 0, y: 0, width: dismissW, height: dismissW)
         searchDismissContainer.center = CGPoint(x: w - side - dismissW / 2, y: y + searchH / 2)
 
-        let tabsCardH = MediaLibraryFolderTabsView.preferredHeight + Self.tabsCardVerticalPadding * 2
-        let cardInset: CGFloat = 16
-        let cardW = w - cardInset * 2
-        let cardY = searchBar.frame.maxY + Self.searchToTabsSpacing
-        tabsCardShadowContainer.frame = CGRect(x: cardInset, y: cardY, width: cardW, height: tabsCardH)
-        tabsCardClipView.frame = tabsCardShadowContainer.bounds
-        folderTabs.frame = CGRect(
-            x: 0,
-            y: Self.tabsCardVerticalPadding,
-            width: cardW,
-            height: MediaLibraryFolderTabsView.preferredHeight
-        )
+        if showsFolderTabs {
+            let tabsCardH = MediaLibraryFolderTabsView.preferredHeight + Self.tabsCardVerticalPadding * 2
+            let cardInset: CGFloat = 16
+            let cardW = w - cardInset * 2
+            let cardY = searchBar.frame.maxY + Self.searchToTabsSpacing
+            tabsCardShadowContainer.frame = CGRect(x: cardInset, y: cardY, width: cardW, height: tabsCardH)
+            tabsCardClipView.frame = tabsCardShadowContainer.bounds
+            folderTabs.frame = CGRect(
+                x: 0,
+                y: Self.tabsCardVerticalPadding,
+                width: cardW,
+                height: MediaLibraryFolderTabsView.preferredHeight
+            )
+        } else {
+            tabsCardShadowContainer.frame = .zero
+            tabsCardClipView.frame = .zero
+            folderTabs.frame = .zero
+        }
     }
 
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {

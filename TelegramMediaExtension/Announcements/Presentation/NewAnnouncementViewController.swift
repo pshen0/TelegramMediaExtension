@@ -4,7 +4,13 @@ import UIKit
 
 final class NewAnnouncementViewController: UITableViewController {
     private let store = CommunityStore.shared
-    private let communityId: UUID
+    private enum Mode {
+        case community(UUID)
+        case personal
+        case editSaved(UUID)
+    }
+
+    private let mode: Mode
 
     private var titleText: String = ""
     private var date: Date = Date().addingTimeInterval(60 * 60 * 24)
@@ -16,7 +22,17 @@ final class NewAnnouncementViewController: UITableViewController {
     private let keyboardDismissOnTapOutside = MediaLibraryKeyboardDismissOnTapOutside()
 
     init(communityId: UUID) {
-        self.communityId = communityId
+        mode = .community(communityId)
+        super.init(style: .insetGrouped)
+    }
+
+    init(personal: Void = ()) {
+        mode = .personal
+        super.init(style: .insetGrouped)
+    }
+
+    init(editingSavedAnnouncementId: UUID) {
+        mode = .editSaved(editingSavedAnnouncementId)
         super.init(style: .insetGrouped)
     }
 
@@ -25,7 +41,12 @@ final class NewAnnouncementViewController: UITableViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         navigationItem.largeTitleDisplayMode = .never
-        navigationItem.titleView = makeNavTitleView("Новый анонс")
+        switch mode {
+        case .editSaved:
+            navigationItem.titleView = makeNavTitleView("Изменить анонс")
+        default:
+            navigationItem.titleView = makeNavTitleView("Новый анонс")
+        }
         tableView.backgroundColor = TMETheme.Colors.groupedBackground
         tableView.keyboardDismissMode = .interactive
         keyboardDismissOnTapOutside.attach(to: view)
@@ -33,7 +54,21 @@ final class NewAnnouncementViewController: UITableViewController {
         navigationItem.leftBarButtonItem = UIBarButtonItem(title: "Отмена", style: .plain, target: self, action: #selector(cancelTapped))
         // Компактнее, чтобы не «съедать» место заголовка
         navigationItem.rightBarButtonItem = UIBarButtonItem(image: UIImage(systemName: "checkmark"), style: .done, target: self, action: #selector(publishTapped))
-        navigationItem.rightBarButtonItem?.accessibilityLabel = "Опубликовать"
+        if case .editSaved = mode {
+            navigationItem.rightBarButtonItem?.accessibilityLabel = "Сохранить"
+        } else {
+            navigationItem.rightBarButtonItem?.accessibilityLabel = "Опубликовать"
+        }
+
+        store.loadIfNeeded()
+        if case .editSaved(let id) = mode, let a = store.savedAnnouncements.first(where: { $0.id == id }) {
+            titleText = a.title
+            date = a.date
+            detailsText = a.details ?? ""
+            linkText = a.linkURL ?? ""
+            pickedLocation = a.location
+            imageFileName = a.imageFileName
+        }
 
         applyMediaLibraryChromeToNavigation()
         mediaLibraryChromeObserver = NotificationCenter.default.addObserver(
@@ -43,6 +78,8 @@ final class NewAnnouncementViewController: UITableViewController {
         ) { [weak self] _ in
             self?.applyMediaLibraryChromeToNavigation()
         }
+
+        tableView.reloadData()
     }
 
     deinit {
@@ -69,7 +106,11 @@ final class NewAnnouncementViewController: UITableViewController {
     }
 
     @objc private func cancelTapped() {
-        dismiss(animated: true)
+        if case .editSaved = mode {
+            navigationController?.popViewController(animated: true)
+        } else {
+            dismiss(animated: true)
+        }
     }
 
     @objc private func publishTapped() {
@@ -80,15 +121,40 @@ final class NewAnnouncementViewController: UITableViewController {
             present(alert, animated: true)
             return
         }
-        store.addAnnouncement(
-            communityId: communityId,
-            title: t,
-            date: date,
-            details: detailsText,
-            imageFileName: imageFileName,
-            linkURL: linkText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : linkText,
-            location: pickedLocation
-        )
+        let link = linkText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : linkText
+        switch mode {
+        case .community(let communityId):
+            store.addAnnouncement(
+                communityId: communityId,
+                title: t,
+                date: date,
+                details: detailsText,
+                imageFileName: imageFileName,
+                linkURL: link,
+                location: pickedLocation
+            )
+        case .personal:
+            store.addPersonalAnnouncement(
+                title: t,
+                date: date,
+                details: detailsText,
+                imageFileName: imageFileName,
+                linkURL: link,
+                location: pickedLocation
+            )
+        case .editSaved(let id):
+            store.updateSavedAnnouncement(
+                id: id,
+                title: t,
+                date: date,
+                details: detailsText,
+                imageFileName: imageFileName,
+                linkURL: link,
+                location: pickedLocation
+            )
+            navigationController?.popViewController(animated: true)
+            return
+        }
         dismiss(animated: true)
     }
 

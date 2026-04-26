@@ -32,11 +32,7 @@ final class CommunityListViewController: UITableViewController {
             self?.tableView.reloadData()
         }
 
-        navigationItem.rightBarButtonItems = [
-            UIBarButtonItem(image: UIImage(systemName: "calendar"), style: .plain, target: self, action: #selector(myAnnouncementsTapped)),
-            UIBarButtonItem(barButtonSystemItem: .add, target: self, action: #selector(addCommunityTapped))
-        ]
-        navigationItem.rightBarButtonItems?.first?.accessibilityLabel = "Мои анонсы"
+        navigationItem.rightBarButtonItem = UIBarButtonItem(barButtonSystemItem: .add, target: self, action: #selector(addCommunityTapped))
 
         store.loadIfNeeded()
         bind()
@@ -77,10 +73,6 @@ final class CommunityListViewController: UITableViewController {
             self.navigationController?.pushViewController(CommunityChatViewController(communityId: c.id), animated: true)
         })
         present(ac, animated: true)
-    }
-
-    @objc private func myAnnouncementsTapped() {
-        navigationController?.pushViewController(MyAnnouncementsViewController(), animated: true)
     }
 
     override func numberOfSections(in tableView: UITableView) -> Int { 1 }
@@ -251,28 +243,30 @@ private final class CommunityListCell: UITableViewCell {
         let mr = contentView.layoutMargins.right
         let avatarSide: CGFloat = 52
         let gap: CGFloat = 12
-        let topPad: CGFloat = 8
         let titleToSubtitle: CGFloat = 4
         let titleLineH: CGFloat = 22
         let bodyFont = subtitleLabel.font ?? TMETheme.Fonts.body(15)
         let subtitleTwoLineH = ceil(bodyFont.lineHeight * 2 + 1)
 
+        /// Вертикальное центрирование аватара: одинаковый зазор от верха/низа плашки до круга.
+        let avatarY = floor((b.height - avatarSide) / 2)
+        let titleY = avatarY
+
         timeLabel.sizeToFit()
         let timeW = timeLabel.isHidden ? 0 : min(88, max(28, ceil(timeLabel.bounds.width)))
         let timeX = b.width - mr - timeW
-        timeLabel.frame = CGRect(x: timeX, y: topPad, width: timeW, height: titleLineH)
+        timeLabel.frame = CGRect(x: timeX, y: titleY, width: timeW, height: titleLineH)
 
         let avatarX = ml
-        let avatarY = topPad
         avatarView.frame = CGRect(x: avatarX, y: avatarY, width: avatarSide, height: avatarSide)
 
         let textLeft = avatarX + avatarSide + gap
         let textRightEdge = timeLabel.isHidden ? b.width - mr : timeX - gap
         let textW = max(0, textRightEdge - textLeft)
 
-        titleLabel.frame = CGRect(x: textLeft, y: topPad, width: textW, height: titleLineH)
+        titleLabel.frame = CGRect(x: textLeft, y: titleY, width: textW, height: titleLineH)
 
-        let subY = topPad + titleLineH + titleToSubtitle
+        let subY = titleY + titleLineH + titleToSubtitle
         subtitleLabel.frame = CGRect(x: textLeft, y: subY, width: textW, height: subtitleTwoLineH)
     }
 }

@@ -440,7 +440,10 @@ final class MediaLibraryListViewController: UITableViewController, UISearchBarDe
         let search = UIAction(title: "Найти в списке", image: UIImage(systemName: "magnifyingglass")) { [weak self] _ in
             self?.chromeHeader.searchBar.becomeFirstResponder()
         }
-        return UIMenu(children: [filter, sort, grid, search])
+        let announcements = UIAction(title: "Анонсы", image: UIImage(systemName: "calendar")) { [weak self] _ in
+            self?.navigationController?.pushViewController(MediaLibraryAnnouncementsViewController(), animated: true)
+        }
+        return UIMenu(children: [announcements, filter, sort, grid, search])
     }
 
     private func presentKindFilterSheet() {
