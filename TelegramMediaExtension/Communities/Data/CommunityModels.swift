@@ -7,19 +7,54 @@ struct CommunityChat: Identifiable, Codable, Equatable {
     var updatedAt: Date
     /// JPEG в каталоге `CommunityStore.communityAvatarsDirectoryURL`.
     var avatarFileName: String?
+    /// Привязка к произведению из внешней базы (только TMDB, например `tmdb-movie-123` / `tmdb-tv-456`).
+    /// Если `nil` — сообщество «не тематическое», антиспойлеры к нему не применяются.
+    var catalogSourceID: String?
 
-    init(id: UUID = UUID(), title: String, createdAt: Date = Date(), updatedAt: Date = Date(), avatarFileName: String? = nil) {
+    init(
+        id: UUID = UUID(),
+        title: String,
+        createdAt: Date = Date(),
+        updatedAt: Date = Date(),
+        avatarFileName: String? = nil,
+        catalogSourceID: String? = nil
+    ) {
         self.id = id
         self.title = title
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.avatarFileName = avatarFileName
+        self.catalogSourceID = catalogSourceID
     }
 }
 
 enum CommunityMessageKind: String, Codable {
     case post
     case announcement
+}
+
+enum CommunitySpoilerTagKind: String, Codable, Equatable {
+    case filmTimecode
+    case seriesEpisode
+}
+
+/// Привязка поста к произведению + “граница спойлера” (таймкод / сезон‑серия).
+struct CommunitySpoilerTag: Codable, Equatable {
+    /// Внешний ID произведения (только TMDB): `tmdb-movie-123` / `tmdb-tv-456`.
+    var catalogSourceID: String
+    /// Название для отображения в UI.
+    var mediaTitle: String
+    var kind: CommunitySpoilerTagKind
+
+    /// Для сериала.
+    var season: Int?
+    var episode: Int?
+
+    /// Для фильма: минуты от начала (например 45 == 00:45).
+    var timeMinutes: Int?
+
+    /// Хештег, который добавляем в текст поста.
+    var hashtag: String
 }
 
 struct CommunityAnnouncement: Codable, Equatable {
@@ -74,6 +109,10 @@ struct CommunityMessage: Identifiable, Codable, Equatable {
     /// Для анонса — структурированная часть.
     var announcement: CommunityAnnouncement?
 
+    /// Для поста — привязки к произведениям и “границы спойлера”.
+    /// До 5 тегов.
+    var spoilerTags: [CommunitySpoilerTag]
+
     var createdAt: Date
 
     init(
@@ -82,6 +121,7 @@ struct CommunityMessage: Identifiable, Codable, Equatable {
         kind: CommunityMessageKind,
         text: String,
         announcement: CommunityAnnouncement? = nil,
+        spoilerTags: [CommunitySpoilerTag] = [],
         createdAt: Date = Date()
     ) {
         self.id = id
@@ -89,6 +129,7 @@ struct CommunityMessage: Identifiable, Codable, Equatable {
         self.kind = kind
         self.text = text
         self.announcement = announcement
+        self.spoilerTags = spoilerTags
         self.createdAt = createdAt
     }
 }

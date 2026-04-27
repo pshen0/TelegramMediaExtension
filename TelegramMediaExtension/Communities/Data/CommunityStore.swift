@@ -193,11 +193,11 @@ final class CommunityStore: ObservableObject {
         persist()
     }
 
-    func addPost(communityId: UUID, text: String) {
+    func addPost(communityId: UUID, text: String, spoilerTags: [CommunitySpoilerTag] = []) {
         loadIfNeeded()
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !t.isEmpty else { return }
-        let m = CommunityMessage(communityId: communityId, kind: .post, text: t)
+        let m = CommunityMessage(communityId: communityId, kind: .post, text: t, spoilerTags: spoilerTags)
         messages.append(m)
         touchCommunity(communityId)
         persist()

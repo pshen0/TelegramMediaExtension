@@ -5,6 +5,7 @@ import UIKit
 
 final class CommunityChatViewController: UIViewController, UITableViewDataSource, UITableViewDelegate, UITextViewDelegate, UIGestureRecognizerDelegate {
     private let store = CommunityStore.shared
+    private let mediaStore = MediaLibraryStore.shared
     private let communityId: UUID
     private var cancellables = Set<AnyCancellable>()
 
@@ -16,6 +17,7 @@ final class CommunityChatViewController: UIViewController, UITableViewDataSource
     private let inputField = UITextView()
     private let inputPlaceholderLabel = UILabel()
     private let announcementButton = UIButton(type: .system)
+    private let spoilerTagButton = UIButton(type: .system)
     private let sendButton = UIButton(type: .system)
     private var inputPillHeightConstraint: NSLayoutConstraint!
     private var textViewHeightConstraint: NSLayoutConstraint!
@@ -38,6 +40,8 @@ final class CommunityChatViewController: UIViewController, UITableViewDataSource
     }
 
     private var messages: [CommunityMessage] = []
+    private var pendingSpoilerTags: [CommunitySpoilerTag] = []
+    private var revealedSpoilerMessageIds = Set<UUID>()
     private var mediaLibraryChromeObserver: NSObjectProtocol?
     private var keyboardFrameObserver: NSObjectProtocol?
     private var keyboardHideObserver: NSObjectProtocol?
@@ -108,6 +112,11 @@ final class CommunityChatViewController: UIViewController, UITableViewDataSource
         announcementButton.accessibilityLabel = "Новый анонс"
         announcementButton.addTarget(self, action: #selector(newAnnouncementTapped), for: .touchUpInside)
 
+        spoilerTagButton.translatesAutoresizingMaskIntoConstraints = false
+        spoilerTagButton.accessibilityLabel = "Привязать к произведению"
+        spoilerTagButton.addTarget(self, action: #selector(spoilerTagTapped), for: .touchUpInside)
+        refreshSpoilerTagButton()
+
         sendButton.translatesAutoresizingMaskIntoConstraints = false
         sendButton.accessibilityLabel = "Отправить"
         sendButton.addTarget(self, action: #selector(sendTapped), for: .touchUpInside)
@@ -136,6 +145,7 @@ final class CommunityChatViewController: UIViewController, UITableViewDataSource
         inputPlaceholderLabel.isUserInteractionEnabled = false
 
         content.addSubview(announcementButton)
+        content.addSubview(spoilerTagButton)
         content.addSubview(inputPill)
         content.addSubview(sendButton)
         inputPill.addSubview(inputPlaceholderLabel)
@@ -152,12 +162,17 @@ final class CommunityChatViewController: UIViewController, UITableViewDataSource
             announcementButton.widthAnchor.constraint(equalToConstant: side),
             announcementButton.heightAnchor.constraint(equalToConstant: side),
 
+            spoilerTagButton.leadingAnchor.constraint(equalTo: announcementButton.trailingAnchor, constant: 6),
+            spoilerTagButton.centerYAnchor.constraint(equalTo: inputPill.centerYAnchor),
+            spoilerTagButton.widthAnchor.constraint(equalToConstant: side),
+            spoilerTagButton.heightAnchor.constraint(equalToConstant: side),
+
             sendButton.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -10),
             sendButton.centerYAnchor.constraint(equalTo: inputPill.centerYAnchor),
             sendButton.widthAnchor.constraint(equalToConstant: side),
             sendButton.heightAnchor.constraint(equalToConstant: side),
 
-            inputPill.leadingAnchor.constraint(equalTo: announcementButton.trailingAnchor, constant: gap),
+            inputPill.leadingAnchor.constraint(equalTo: spoilerTagButton.trailingAnchor, constant: gap),
             inputPill.trailingAnchor.constraint(equalTo: sendButton.leadingAnchor, constant: -gap),
             inputPill.topAnchor.constraint(equalTo: content.topAnchor, constant: InputBarMetrics.barVerticalMargin),
             inputPillHeightConstraint,
@@ -499,6 +514,14 @@ final class CommunityChatViewController: UIViewController, UITableViewDataSource
             }
             .store(in: &cancellables)
 
+        mediaStore.$items
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                // Прогресс в медиатеке влияет на видимость спойлеров.
+                self?.tableView.reloadData()
+            }
+            .store(in: &cancellables)
+
         store.$savedAnnouncements
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
@@ -528,8 +551,10 @@ final class CommunityChatViewController: UIViewController, UITableViewDataSource
     @objc private func sendTapped() {
         let text = (inputField.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
-        store.addPost(communityId: communityId, text: text)
+        store.addPost(communityId: communityId, text: text, spoilerTags: pendingSpoilerTags)
         inputField.text = ""
+        pendingSpoilerTags = []
+        refreshSpoilerTagButton()
         textViewDidChange(inputField)
     }
 
@@ -538,6 +563,150 @@ final class CommunityChatViewController: UIViewController, UITableViewDataSource
         let nav = UINavigationController(rootViewController: vc)
         nav.modalPresentationStyle = .pageSheet
         present(nav, animated: true)
+    }
+
+    @objc private func spoilerTagTapped() {
+        presentSpoilerTagPicker()
+    }
+
+    private func presentSpoilerTagPicker() {
+        guard pendingSpoilerTags.count < 5 else {
+            let ac = UIAlertController(title: "Спойлер-теги", message: "Можно добавить максимум 5 тегов.", preferredStyle: .alert)
+            ac.addAction(UIAlertAction(title: "Ок", style: .default))
+            present(ac, animated: true)
+            return
+        }
+
+        let picker = MediaCatalogSearchViewController(style: .insetGrouped)
+        picker.title = "Выберите произведение"
+        picker.onSelectCandidate = { [weak self, weak picker] cand in
+            guard let self else { return }
+            guard cand.id.hasPrefix("tmdb-") else { return }
+            picker?.dismiss(animated: true) {
+                self.presentSpoilerTagValuePrompt(for: cand)
+            }
+        }
+        let nav = UINavigationController(rootViewController: picker)
+        nav.modalPresentationStyle = .pageSheet
+        present(nav, animated: true)
+    }
+
+    private func presentSpoilerTagValuePrompt(for cand: MediaCatalogCandidate) {
+        let title = "Спойлер-тег"
+        switch cand.kind {
+        case .series:
+            let ac = UIAlertController(title: title, message: "\(cand.title)\nСезон и эпизод", preferredStyle: .alert)
+            ac.addTextField { tf in
+                tf.placeholder = "Сезон (например 1)"
+                tf.keyboardType = .numberPad
+                tf.text = "1"
+            }
+            ac.addTextField { tf in
+                tf.placeholder = "Эпизод (например 3)"
+                tf.keyboardType = .numberPad
+                tf.text = "1"
+            }
+            ac.addAction(UIAlertAction(title: "Отмена", style: .cancel))
+            ac.addAction(UIAlertAction(title: "Готово", style: .default) { [weak self] _ in
+                guard let self else { return }
+                let s = Int(ac.textFields?[0].text ?? "") ?? 1
+                let e = Int(ac.textFields?[1].text ?? "") ?? 1
+                let hashtag = self.makeSpoilerHashtag(title: cand.title, suffix: "s\(s)e\(e)")
+                let tag = CommunitySpoilerTag(
+                    catalogSourceID: cand.id,
+                    mediaTitle: cand.title,
+                    kind: .seriesEpisode,
+                    season: s,
+                    episode: e,
+                    timeMinutes: nil,
+                    hashtag: hashtag
+                )
+                self.appendSpoilerTagToInputAndState(tag)
+                self.refreshSpoilerTagButton()
+            })
+            present(ac, animated: true)
+        case .film:
+            let ac = UIAlertController(title: title, message: "\(cand.title)\nТаймкод (HH:MM)", preferredStyle: .alert)
+            ac.addTextField { tf in
+                tf.placeholder = "Например 00:45"
+                tf.keyboardType = .numbersAndPunctuation
+            }
+            ac.addAction(UIAlertAction(title: "Отмена", style: .cancel))
+            ac.addAction(UIAlertAction(title: "Готово", style: .default) { [weak self] _ in
+                guard let self else { return }
+                let raw = (ac.textFields?.first?.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                let mins = self.parseTimecodeMinutes(raw) ?? 0
+                let tc = self.formatTimecode(minutes: mins)
+                let hashtag = self.makeSpoilerHashtag(title: cand.title, suffix: tc.replacingOccurrences(of: ":", with: "_"))
+                let tag = CommunitySpoilerTag(
+                    catalogSourceID: cand.id,
+                    mediaTitle: cand.title,
+                    kind: .filmTimecode,
+                    season: nil,
+                    episode: nil,
+                    timeMinutes: mins,
+                    hashtag: hashtag
+                )
+                self.appendSpoilerTagToInputAndState(tag)
+                self.refreshSpoilerTagButton()
+            })
+            present(ac, animated: true)
+        default:
+            return
+        }
+    }
+
+    private func makeSpoilerHashtag(title: String, suffix: String) -> String {
+        let norm = MediaHashtag.normalize(title) ?? "spoiler"
+        let cleanSuffix = suffix
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: " ", with: "_")
+            .lowercased()
+        return "#\(norm)_\(cleanSuffix)"
+    }
+
+    private func parseTimecodeMinutes(_ raw: String) -> Int? {
+        let t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { return nil }
+        let parts = t.split(separator: ":").map(String.init)
+        if parts.count == 2 {
+            let hh = Int(parts[0]) ?? 0
+            let mm = Int(parts[1]) ?? 0
+            return max(0, hh) * 60 + max(0, mm)
+        }
+        if let mm = Int(t) { return max(0, mm) }
+        return nil
+    }
+
+    private func formatTimecode(minutes: Int) -> String {
+        let m = max(0, minutes)
+        let hh = m / 60
+        let mm = m % 60
+        return String(format: "%02d:%02d", hh, mm)
+    }
+
+    private func refreshSpoilerTagButton() {
+        let imgName = pendingSpoilerTags.isEmpty ? "tag" : "tag.fill"
+        spoilerTagButton.setImage(UIImage(systemName: imgName), for: .normal)
+        spoilerTagButton.accessibilityValue = pendingSpoilerTags.isEmpty ? nil : "\(pendingSpoilerTags.count)"
+    }
+
+    private func appendSpoilerTagToInputAndState(_ tag: CommunitySpoilerTag) {
+        guard pendingSpoilerTags.count < 5 else { return }
+        pendingSpoilerTags.append(tag)
+
+        let existing = (inputField.text ?? "")
+        if existing.contains(tag.hashtag) {
+            textViewDidChange(inputField)
+            return
+        }
+        let trimmed = existing.trimmingCharacters(in: .whitespacesAndNewlines)
+        let next = trimmed.isEmpty ? tag.hashtag : (existing + "\n" + tag.hashtag)
+        inputField.text = next
+        textViewDidChange(inputField)
+        inputField.becomeFirstResponder()
+        let end = inputField.endOfDocument
+        inputField.selectedTextRange = inputField.textRange(from: end, to: end)
     }
 
     // MARK: - UITableView
@@ -554,7 +723,14 @@ final class CommunityChatViewController: UIViewController, UITableViewDataSource
         let cell = tableView.dequeueReusableCell(withIdentifier: CommunityMessageCell.reuseId, for: indexPath) as! CommunityMessageCell
         let msg = messages[indexPath.row]
         let saved = store.savedAnnouncements.contains(where: { $0.sourceMessageId == msg.id })
-        cell.configure(message: msg, announcementIsSaved: saved)
+        let spoiler = spoilerDecision(for: msg)
+        let isRevealed = revealedSpoilerMessageIds.contains(msg.id)
+        cell.configure(message: msg, announcementIsSaved: saved, spoiler: spoiler, spoilerIsRevealed: isRevealed)
+        cell.onRevealSpoiler = { [weak self] messageId in
+            guard let self else { return }
+            self.revealedSpoilerMessageIds.insert(messageId)
+            self.tableView.reloadRows(at: [indexPath], with: .fade)
+        }
         cell.onSaveAnnouncement = { [weak self] msg in
             self?.store.saveAnnouncementFromMessage(msg)
         }
@@ -572,6 +748,65 @@ final class CommunityChatViewController: UIViewController, UITableViewDataSource
             UIApplication.shared.open(url, options: [:], completionHandler: nil)
         }
         return cell
+    }
+
+    fileprivate struct SpoilerDecision {
+        let title: String
+        let subtitle: String
+        let messageId: UUID
+    }
+
+    private func spoilerDecision(for message: CommunityMessage) -> SpoilerDecision? {
+        guard message.kind == .post else { return nil }
+        guard !message.spoilerTags.isEmpty else { return nil }
+
+        for tag in message.spoilerTags {
+            guard tag.catalogSourceID.hasPrefix("tmdb-") else { continue }
+            guard let item = mediaStore.item(catalogSourceID: tag.catalogSourceID) else { continue }
+            guard item.spoilersProtectionEnabled else { continue }
+
+            if tagIsAheadOfProgress(tag: tag, item: item) {
+                return SpoilerDecision(
+                    title: tag.mediaTitle,
+                    subtitle: spoilerSubtitle(for: tag),
+                    messageId: message.id
+                )
+            }
+        }
+        return nil
+    }
+
+    private func tagIsAheadOfProgress(tag: CommunitySpoilerTag, item: MediaItem) -> Bool {
+        switch (tag.kind, item.kind) {
+        case (.filmTimecode, .film):
+            let current = max(0, item.progress.current ?? 0)
+            let tm = max(0, tag.timeMinutes ?? 0)
+            return tm > current
+        case (.seriesEpisode, .series):
+            let curSeason = max(1, item.progress.season ?? 1)
+            let curEpisode = max(0, item.progress.current ?? 0)
+            let s = max(1, tag.season ?? 1)
+            let e = max(0, tag.episode ?? 0)
+            if s > curSeason { return true }
+            if s < curSeason { return false }
+            return e > curEpisode
+        default:
+            return false
+        }
+    }
+
+    private func spoilerSubtitle(for tag: CommunitySpoilerTag) -> String {
+        switch tag.kind {
+        case .seriesEpisode:
+            let s = max(1, tag.season ?? 1)
+            let e = max(1, tag.episode ?? 1)
+            return "Сезон \(s), эпизод \(e)"
+        case .filmTimecode:
+            let m = max(0, tag.timeMinutes ?? 0)
+            let hh = m / 60
+            let mm = m % 60
+            return String(format: "Таймкод %02d:%02d", hh, mm)
+        }
     }
 
     // MARK: - UITextViewDelegate
@@ -865,8 +1100,11 @@ private final class CommunityMessageCell: UITableViewCell {
     var onOpenComments: ((CommunityMessage) -> Void)?
     var onOpenLink: ((URL) -> Void)?
     var onOpenLocation: ((CommunityLocation) -> Void)?
+    var onRevealSpoiler: ((UUID) -> Void)?
     private var message: CommunityMessage?
     private var announcementIsSaved = false
+    private var spoilerDecision: CommunityChatViewController.SpoilerDecision?
+    private var spoilerIsRevealed = false
 
     /// Анонс: полноширинная карточка
     private let bubble = UIView()
@@ -884,6 +1122,8 @@ private final class CommunityMessageCell: UITableViewCell {
     private let actionsIcon = UIImageView()
     private let actionsLabel = UILabel()
     private let actionsChevron = UIImageView()
+
+    private let spoilerOverlay = SpoilerOverlayView()
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
@@ -945,6 +1185,7 @@ private final class CommunityMessageCell: UITableViewCell {
 
         contentView.addSubview(bubble)
         contentView.addSubview(postBubble)
+        contentView.addSubview(spoilerOverlay)
 
         bubble.addSubview(announcementImageView)
         bubble.addSubview(titleLabel)
@@ -964,9 +1205,26 @@ private final class CommunityMessageCell: UITableViewCell {
         }
 
         postBubble.isHidden = true
+        spoilerOverlay.isHidden = true
+        spoilerOverlay.onTap = { [weak self] in
+            guard let self, let msg = self.message else { return }
+            self.onRevealSpoiler?(msg.id)
+        }
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func prepareForReuse() {
+        super.prepareForReuse()
+        message = nil
+        announcementIsSaved = false
+        spoilerDecision = nil
+        spoilerIsRevealed = false
+        spoilerOverlay.isHidden = true
+        spoilerOverlay.title = ""
+        spoilerOverlay.subtitle = ""
+        onRevealSpoiler = nil
+    }
 
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
@@ -1163,6 +1421,8 @@ private final class CommunityMessageCell: UITableViewCell {
                 width: max(0, actionsChevron.frame.minX - gap - (actionsIcon.frame.maxX + gap)),
                 height: stripH
             )
+
+            spoilerOverlay.frame = postBubble.frame
         } else {
             bubble.isHidden = false
             postBubble.isHidden = true
@@ -1237,12 +1497,21 @@ private final class CommunityMessageCell: UITableViewCell {
             y += footerH + LayoutMetrics.footerBottomPadding
 
             bubble.frame = CGRect(x: x, y: LayoutMetrics.spacingAboveCard, width: bw, height: y)
+
+            spoilerOverlay.frame = .zero
         }
     }
 
-    func configure(message: CommunityMessage, announcementIsSaved: Bool) {
+    func configure(
+        message: CommunityMessage,
+        announcementIsSaved: Bool,
+        spoiler: CommunityChatViewController.SpoilerDecision?,
+        spoilerIsRevealed: Bool
+    ) {
         self.message = message
         self.announcementIsSaved = announcementIsSaved
+        self.spoilerDecision = spoiler
+        self.spoilerIsRevealed = spoilerIsRevealed
         switch message.kind {
         case .post:
             if bodyLabel.superview !== postBubble { postBubble.addSubview(bodyLabel) }
@@ -1291,7 +1560,18 @@ private final class CommunityMessageCell: UITableViewCell {
             bubble.backgroundColor = MediaLibraryHeaderBannerColor.posterPlaceholderFill(for: traitCollection)
         }
         applyMediaLibraryChromeColors()
+        applySpoilerOverlay()
         setNeedsLayout()
+    }
+
+    private func applySpoilerOverlay() {
+        guard let spoilerDecision else {
+            spoilerOverlay.isHidden = true
+            return
+        }
+        spoilerOverlay.title = spoilerDecision.title
+        spoilerOverlay.subtitle = spoilerDecision.subtitle
+        spoilerOverlay.isHidden = spoilerIsRevealed
     }
 
     @objc private func actionsTapped() {
@@ -1323,6 +1603,190 @@ private final class CommunityMessageCell: UITableViewCell {
         f.locale = Locale(identifier: "ru_RU")
         f.dateFormat = "d MMM, HH:mm"
         return f.string(from: date)
+    }
+}
+
+// MARK: - Spoiler overlay (blur + "помехи")
+
+private final class SpoilerOverlayView: UIControl {
+    var onTap: (() -> Void)?
+
+    var title: String = "" { didSet { titleLabel.text = title; updateAccessibility() } }
+    var subtitle: String = "" { didSet { subtitleLabel.text = subtitle; updateAccessibility() } }
+
+    private let blur = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterial))
+    private let dim = UIView()
+    private let particles = SpoilerParticlesView()
+
+    private let pill = UIVisualEffectView(effect: UIBlurEffect(style: .systemThinMaterial))
+    private let titleLabel = UILabel()
+    private let subtitleLabel = UILabel()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isAccessibilityElement = true
+        accessibilityTraits = [.button]
+        clipsToBounds = true
+        layer.cornerRadius = 16
+        if #available(iOS 13.0, *) { layer.cornerCurve = .continuous }
+
+        addTarget(self, action: #selector(tapped), for: .touchUpInside)
+
+        blur.isUserInteractionEnabled = false
+        dim.isUserInteractionEnabled = false
+        particles.isUserInteractionEnabled = false
+        dim.backgroundColor = UIColor.black.withAlphaComponent(0.20)
+
+        pill.isUserInteractionEnabled = false
+        pill.clipsToBounds = true
+        pill.layer.cornerRadius = 12
+        if #available(iOS 13.0, *) { pill.layer.cornerCurve = .continuous }
+
+        // Название и сезон/эпизод — одинаковый шрифт.
+        titleLabel.font = TMETheme.Fonts.body(13)
+        titleLabel.textColor = .label
+        titleLabel.numberOfLines = 2
+        titleLabel.textAlignment = .center
+
+        subtitleLabel.font = TMETheme.Fonts.body(13)
+        subtitleLabel.textColor = .secondaryLabel
+        subtitleLabel.numberOfLines = 2
+        subtitleLabel.textAlignment = .center
+
+        addSubview(blur)
+        addSubview(dim)
+        addSubview(particles)
+        addSubview(pill)
+
+        pill.contentView.addSubview(titleLabel)
+        pill.contentView.addSubview(subtitleLabel)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    @objc private func tapped() {
+        onTap?()
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window == nil {
+            particles.stop()
+        } else if !isHidden {
+            particles.start()
+        }
+    }
+
+    override var isHidden: Bool {
+        didSet {
+            if isHidden {
+                particles.stop()
+            } else if window != nil {
+                particles.start()
+            }
+        }
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        blur.frame = bounds
+        dim.frame = bounds
+        particles.frame = bounds
+
+        // Компактная плашка по центру.
+        let maxW = min(bounds.width - 16, 220)
+        let contentW = max(130, maxW)
+
+        let titleH = ceil(titleLabel.sizeThatFits(CGSize(width: contentW - 12, height: 200)).height)
+        let subH = ceil(subtitleLabel.sizeThatFits(CGSize(width: contentW - 12, height: 200)).height)
+        let totalH = 6 + titleH + 3 + subH + 6
+
+        pill.bounds = CGRect(x: 0, y: 0, width: contentW, height: totalH)
+        pill.center = CGPoint(x: bounds.midX, y: bounds.midY)
+
+        var y: CGFloat = 6
+        titleLabel.frame = CGRect(x: 6, y: y, width: contentW - 12, height: titleH)
+        y = titleLabel.frame.maxY + 3
+        subtitleLabel.frame = CGRect(x: 6, y: y, width: contentW - 12, height: subH)
+    }
+
+    private func updateAccessibility() {
+        let t = title.isEmpty ? "Спойлер" : title
+        let s = subtitle.isEmpty ? "" : ", \(subtitle)"
+        accessibilityLabel = "Спойлер: \(t)\(s)"
+        accessibilityHint = "Нажмите, чтобы показать"
+    }
+}
+
+/// Белые точки, «летающие» по оверлею (похоже на Telegram spoiler).
+private final class SpoilerParticlesView: UIView {
+    private let emitter = CAEmitterLayer()
+    private var running = false
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isUserInteractionEnabled = false
+        clipsToBounds = true
+        layer.addSublayer(emitter)
+
+        emitter.emitterShape = .rectangle
+        emitter.renderMode = .additive
+        emitter.seed = arc4random()
+        emitter.opacity = 0.85
+        emitter.birthRate = 0
+
+        let cell = CAEmitterCell()
+        cell.contents = Self.dotImage()?.cgImage
+        cell.birthRate = 130
+        cell.lifetime = 6.2
+        cell.lifetimeRange = 1.2
+        cell.velocity = 16
+        cell.velocityRange = 12
+        cell.emissionRange = .pi * 2
+        cell.scale = 0.045
+        cell.scaleRange = 0.025
+        cell.alphaSpeed = -0.06
+        cell.spin = 0.6
+        cell.spinRange = 1.2
+        cell.color = UIColor(white: 1, alpha: 0.9).cgColor
+
+        emitter.emitterCells = [cell]
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        emitter.frame = bounds
+        emitter.emitterPosition = CGPoint(x: bounds.midX, y: bounds.midY)
+        emitter.emitterSize = CGSize(width: bounds.width, height: bounds.height)
+    }
+
+    func start() {
+        guard !running else { return }
+        running = true
+        emitter.birthRate = 1
+    }
+
+    func stop() {
+        guard running else { return }
+        running = false
+        emitter.birthRate = 0
+    }
+
+    private static func dotImage() -> UIImage? {
+        let side: CGFloat = 10
+        let r = side / 2
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: side, height: side))
+        return renderer.image { ctx in
+            ctx.cgContext.setFillColor(UIColor.white.cgColor)
+            ctx.cgContext.addEllipse(in: CGRect(x: 0, y: 0, width: side, height: side))
+            ctx.cgContext.fillPath()
+            // мягкое свечение
+            ctx.cgContext.setShadow(offset: .zero, blur: 3, color: UIColor.white.withAlphaComponent(0.6).cgColor)
+            ctx.cgContext.addEllipse(in: CGRect(x: r - 1, y: r - 1, width: 2, height: 2))
+            ctx.cgContext.fillPath()
+        }
     }
 }
 
