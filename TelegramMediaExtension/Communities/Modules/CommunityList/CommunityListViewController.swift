@@ -1,9 +1,8 @@
-import Combine
 import UIKit
 
 final class CommunityListViewController: UITableViewController, UISearchResultsUpdating {
-    private let store = CommunityStore.shared
-    private var cancellables = Set<AnyCancellable>()
+    private let interactor: CommunityListInteractor
+    private var rows: [CommunityListModel.List.Row] = []
     private var bannerColorObserver: NSObjectProtocol?
 
     private lazy var communitySearchController: UISearchController = {
@@ -46,21 +45,19 @@ final class CommunityListViewController: UITableViewController, UISearchResultsU
     private lazy var segmentTableHeaderView: UIView = {
         let v = UIView()
         v.backgroundColor = .systemGroupedBackground
-        segmentScrollView.translatesAutoresizingMaskIntoConstraints = false
-        feedSegmentControl.translatesAutoresizingMaskIntoConstraints = false
         v.addSubview(segmentScrollView)
         segmentScrollView.addSubview(feedSegmentControl)
-        NSLayoutConstraint.activate([
-            segmentScrollView.topAnchor.constraint(equalTo: v.topAnchor, constant: FeedSegmentMetrics.topInset),
-            segmentScrollView.bottomAnchor.constraint(equalTo: v.bottomAnchor, constant: -FeedSegmentMetrics.bottomInset),
-            segmentScrollView.heightAnchor.constraint(equalToConstant: FeedSegmentMetrics.controlHeight),
 
-            feedSegmentControl.topAnchor.constraint(equalTo: segmentScrollView.contentLayoutGuide.topAnchor),
-            feedSegmentControl.bottomAnchor.constraint(equalTo: segmentScrollView.contentLayoutGuide.bottomAnchor),
-            feedSegmentControl.leadingAnchor.constraint(equalTo: segmentScrollView.contentLayoutGuide.leadingAnchor),
-            feedSegmentControl.trailingAnchor.constraint(equalTo: segmentScrollView.contentLayoutGuide.trailingAnchor),
-            feedSegmentControl.heightAnchor.constraint(equalToConstant: FeedSegmentMetrics.controlHeight),
-        ])
+        segmentScrollView.pinTop(to: v.topAnchor, Double(FeedSegmentMetrics.topInset))
+        segmentScrollView.pinBottom(to: v.bottomAnchor, Double(FeedSegmentMetrics.bottomInset))
+        segmentScrollView.setHeight(Double(FeedSegmentMetrics.controlHeight))
+
+        feedSegmentControl.pinTop(to: segmentScrollView.contentLayoutGuide.topAnchor)
+        feedSegmentControl.pinBottom(to: segmentScrollView.contentLayoutGuide.bottomAnchor)
+        feedSegmentControl.pinLeft(to: segmentScrollView.contentLayoutGuide.leadingAnchor)
+        feedSegmentControl.pinRight(to: segmentScrollView.contentLayoutGuide.trailingAnchor)
+        feedSegmentControl.setHeight(Double(FeedSegmentMetrics.controlHeight))
+
         feedSegmentControl.addTarget(self, action: #selector(feedSegmentLocked), for: .valueChanged)
         return v
     }()
@@ -70,7 +67,16 @@ final class CommunityListViewController: UITableViewController, UISearchResultsU
 
     private var lastLaidOutSegmentContainerWidth: CGFloat = 0
 
-    init() {
+    convenience init() {
+        let presenter = CommunityListPresenter()
+        let interactor = CommunityListInteractor(presenter: presenter)
+        self.init(interactor: interactor)
+        presenter.view = self
+        interactor.router = self
+    }
+
+    init(interactor: CommunityListInteractor) {
+        self.interactor = interactor
         super.init(style: .plain)
     }
 
@@ -103,20 +109,16 @@ final class CommunityListViewController: UITableViewController, UISearchResultsU
 
         navigationItem.rightBarButtonItem = UIBarButtonItem(barButtonSystemItem: .add, target: self, action: #selector(addCommunityTapped))
 
-        store.loadIfNeeded()
-        bind()
+        interactor.viewDidLoad(CommunityListModel.ViewDidLoad.Request())
         applyFeedSegmentAppearance()
     }
 
     private func pinSegmentScrollHorizontalToTableContent() {
         NSLayoutConstraint.deactivate(segmentScrollHorizontalConstraints)
         /// Горизонталь совпадает с безопасной областью таблицы — как проектная ширина поисковой строки под навбаром.
-        let pair = [
-            segmentScrollView.leadingAnchor.constraint(equalTo: tableView.safeAreaLayoutGuide.leadingAnchor, constant: 15),
-            segmentScrollView.trailingAnchor.constraint(equalTo: tableView.safeAreaLayoutGuide.trailingAnchor, constant: -15),
-        ]
-        segmentScrollHorizontalConstraints = pair
-        NSLayoutConstraint.activate(pair)
+        let leading = segmentScrollView.pinLeft(to: tableView.safeAreaLayoutGuide.leadingAnchor, 15)
+        let trailing = segmentScrollView.pinRight(to: tableView.safeAreaLayoutGuide.trailingAnchor, 15)
+        segmentScrollHorizontalConstraints = [leading, trailing]
     }
 
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
@@ -209,42 +211,14 @@ final class CommunityListViewController: UITableViewController, UISearchResultsU
     }
 
     func updateSearchResults(for searchController: UISearchController) {
-        tableView.reloadData()
-    }
-
-    private func displayedCommunities() -> [CommunityChat] {
-        let trimmed = communitySearchController.searchBar.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard !trimmed.isEmpty else {
-            return store.communities
-        }
-        let q = trimmed.lowercased()
-        return store.communities.filter { c in
-            if c.title.lowercased().contains(q) { return true }
-            let preview = store.listPreviewText(for: c.id)
-            return preview.lowercased().contains(q)
-        }
+        let q = communitySearchController.searchBar.text ?? ""
+        interactor.updateSearch(CommunityListModel.UpdateSearch.Request(query: q))
     }
 
     deinit {
         if let bannerColorObserver {
             NotificationCenter.default.removeObserver(bannerColorObserver)
         }
-    }
-
-    private func bind() {
-        store.$communities
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                self?.tableView.reloadData()
-            }
-            .store(in: &cancellables)
-
-        store.$messages
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                self?.tableView.reloadData()
-            }
-            .store(in: &cancellables)
     }
 
     @objc private func addCommunityTapped() {
@@ -256,8 +230,7 @@ final class CommunityListViewController: UITableViewController, UISearchResultsU
         ac.addAction(UIAlertAction(title: "Создать", style: .default) { [weak self] _ in
             guard let self else { return }
             let title = ac.textFields?.first?.text ?? ""
-            let c = self.store.createCommunity(title: title)
-            self.navigationController?.pushViewController(CommunityChatViewController(communityId: c.id), animated: true)
+            self.interactor.createCommunity(CommunityListModel.CreateCommunity.Request(title: title))
         })
         present(ac, animated: true)
     }
@@ -265,7 +238,7 @@ final class CommunityListViewController: UITableViewController, UISearchResultsU
     override func numberOfSections(in tableView: UITableView) -> Int { 1 }
 
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        displayedCommunities().count
+        rows.count
     }
 
     override func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
@@ -274,186 +247,40 @@ final class CommunityListViewController: UITableViewController, UISearchResultsU
 
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: CommunityListCell.reuseId, for: indexPath) as! CommunityListCell
-        let c = displayedCommunities()[indexPath.row]
-        let preview = store.listPreviewText(for: c.id)
-        let last = store.lastMessage(for: c.id)
-        let timeText = last.map { Self.formatListTime($0.createdAt) } ?? ""
-        cell.configure(community: c, preview: preview, timeText: timeText)
+        let row = rows[indexPath.row]
+        cell.configure(community: row.community, preview: row.preview, timeText: row.timeText)
         return cell
     }
 
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
-        let c = displayedCommunities()[indexPath.row]
-        navigationController?.pushViewController(CommunityChatViewController(communityId: c.id), animated: true)
+        let id = rows[indexPath.row].community.id
+        routeToChat(communityId: id)
     }
 
     override func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
-        let c = displayedCommunities()[indexPath.row]
+        let id = rows[indexPath.row].community.id
         let delete = UIContextualAction(style: .destructive, title: "Удалить") { [weak self] _, _, done in
-            self?.store.deleteCommunity(id: c.id)
+            self?.interactor.deleteCommunity(CommunityListModel.DeleteCommunity.Request(id: id))
             done(true)
         }
         return UISwipeActionsConfiguration(actions: [delete])
     }
+}
 
-    private static func formatListTime(_ date: Date) -> String {
-        let cal = Calendar.current
-        let fTime = DateFormatter()
-        fTime.locale = Locale(identifier: "ru_RU")
-        fTime.dateFormat = "HH:mm"
-        if cal.isDateInToday(date) {
-            return fTime.string(from: date)
-        }
-        if cal.isDateInYesterday(date) {
-            return "Вчера"
-        }
-        let fDay = DateFormatter()
-        fDay.locale = Locale(identifier: "ru_RU")
-        if cal.isDate(date, equalTo: Date(), toGranularity: .year) {
-            fDay.dateFormat = "d MMM"
-        } else {
-            fDay.dateFormat = "d.MM.yy"
-        }
-        return fDay.string(from: date)
+// MARK: - CommunityListDisplayLogic
+
+extension CommunityListViewController: CommunityListDisplayLogic {
+    func displayCommunityList(_ viewModel: CommunityListModel.List.ViewModel) {
+        rows = viewModel.rows
+        tableView.reloadData()
     }
 }
 
-// MARK: - Cell
+// MARK: - CommunityListRoutingLogic
 
-private final class CommunityListCell: UITableViewCell {
-    static let reuseId = "CommunityListCell"
-
-    private var usesAvatarPlaceholder = false
-    private let avatarView = UIImageView()
-    private let titleLabel = UILabel()
-    private let subtitleLabel = UILabel()
-    private let timeLabel = UILabel()
-
-    static func rowHeight() -> CGFloat {
-        let vTop: CGFloat = 8
-        let vBottom: CGFloat = 8
-        let titleLine: CGFloat = 22
-        let titleToSubtitle: CGFloat = 4
-        let body = TMETheme.Fonts.body(15)
-        let subtitleTwoLines = ceil(body.lineHeight * 2 + 1)
-        return vTop + titleLine + titleToSubtitle + subtitleTwoLines + vBottom
-    }
-
-    override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
-        super.init(style: style, reuseIdentifier: reuseIdentifier)
-        selectionStyle = .default
-        accessoryType = .none
-        backgroundColor = .systemGroupedBackground
-        contentView.backgroundColor = .systemGroupedBackground
-
-        avatarView.layer.cornerRadius = 26
-        if #available(iOS 13.0, *) {
-            avatarView.layer.cornerCurve = .continuous
-        }
-        avatarView.clipsToBounds = true
-        avatarView.contentMode = .scaleAspectFill
-        avatarView.isUserInteractionEnabled = false
-        avatarView.accessibilityIgnoresInvertColors = true
-
-        titleLabel.font = TMETheme.Fonts.titleSemibold(17)
-        titleLabel.textColor = .label
-        titleLabel.numberOfLines = 1
-        titleLabel.lineBreakMode = .byTruncatingTail
-
-        subtitleLabel.font = TMETheme.Fonts.body(15)
-        subtitleLabel.textColor = .secondaryLabel
-        subtitleLabel.numberOfLines = 2
-        subtitleLabel.lineBreakMode = .byTruncatingTail
-
-        timeLabel.font = TMETheme.Fonts.body(13)
-        timeLabel.textColor = .secondaryLabel
-        timeLabel.textAlignment = .right
-        timeLabel.numberOfLines = 1
-        timeLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
-        timeLabel.setContentHuggingPriority(.required, for: .horizontal)
-
-        contentView.addSubview(avatarView)
-        contentView.addSubview(titleLabel)
-        contentView.addSubview(subtitleLabel)
-        contentView.addSubview(timeLabel)
-    }
-
-    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-
-    override func prepareForReuse() {
-        super.prepareForReuse()
-        usesAvatarPlaceholder = false
-    }
-
-    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
-        super.traitCollectionDidChange(previousTraitCollection)
-        if usesAvatarPlaceholder {
-            applyAvatarPlaceholderChrome()
-        }
-    }
-
-    private func applyAvatarPlaceholderChrome() {
-        avatarView.tintColor = MediaLibraryHeaderBannerColor.posterPlaceholderTint(for: traitCollection)
-        avatarView.backgroundColor = MediaLibraryHeaderBannerColor.posterPlaceholderFill(for: traitCollection)
-    }
-
-    func configure(community: CommunityChat, preview: String, timeText: String) {
-        titleLabel.text = community.title
-        subtitleLabel.text = preview
-        timeLabel.text = timeText
-        timeLabel.isHidden = timeText.isEmpty
-
-        if let name = community.avatarFileName,
-           let url = CommunityStore.communityAvatarURL(fileName: name),
-           let data = try? Data(contentsOf: url),
-           let img = UIImage(data: data) {
-            usesAvatarPlaceholder = false
-            avatarView.contentMode = .scaleAspectFill
-            avatarView.image = img.withRenderingMode(.alwaysOriginal)
-            avatarView.tintColor = nil
-            avatarView.backgroundColor = .clear
-        } else {
-            usesAvatarPlaceholder = true
-            avatarView.contentMode = .center
-            let cfg = UIImage.SymbolConfiguration(pointSize: 15, weight: .medium)
-            avatarView.image = UIImage(systemName: "person.2.fill", withConfiguration: cfg)?.withRenderingMode(.alwaysTemplate)
-            applyAvatarPlaceholderChrome()
-        }
-        setNeedsLayout()
-    }
-
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        let b = contentView.bounds
-        let ml = contentView.layoutMargins.left
-        let mr = contentView.layoutMargins.right
-        let avatarSide: CGFloat = 52
-        let gap: CGFloat = 12
-        let titleToSubtitle: CGFloat = 4
-        let titleLineH: CGFloat = 22
-        let bodyFont = subtitleLabel.font ?? TMETheme.Fonts.body(15)
-        let subtitleTwoLineH = ceil(bodyFont.lineHeight * 2 + 1)
-
-        /// Вертикальное центрирование аватара: одинаковый зазор от верха/низа плашки до круга.
-        let avatarY = floor((b.height - avatarSide) / 2)
-        let titleY = avatarY
-
-        timeLabel.sizeToFit()
-        let timeW = timeLabel.isHidden ? 0 : min(88, max(28, ceil(timeLabel.bounds.width)))
-        let timeX = b.width - mr - timeW
-        timeLabel.frame = CGRect(x: timeX, y: titleY, width: timeW, height: titleLineH)
-
-        let avatarX = ml
-        avatarView.frame = CGRect(x: avatarX, y: avatarY, width: avatarSide, height: avatarSide)
-
-        let textLeft = avatarX + avatarSide + gap
-        let textRightEdge = timeLabel.isHidden ? b.width - mr : timeX - gap
-        let textW = max(0, textRightEdge - textLeft)
-
-        titleLabel.frame = CGRect(x: textLeft, y: titleY, width: textW, height: titleLineH)
-
-        let subY = titleY + titleLineH + titleToSubtitle
-        subtitleLabel.frame = CGRect(x: textLeft, y: subY, width: textW, height: subtitleTwoLineH)
+extension CommunityListViewController: CommunityListRoutingLogic {
+    func routeToChat(communityId: UUID) {
+        navigationController?.pushViewController(CommunityChatBuilder.build(communityId: communityId), animated: true)
     }
 }

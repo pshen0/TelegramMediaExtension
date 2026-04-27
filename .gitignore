@@ -8,4 +8,5 @@
 *.xcworkspace/
 *.xcuserdata/
 *.derivedData/
+*.derivedDataLocal/
 *.HomeModule/

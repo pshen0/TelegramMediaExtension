@@ -1,0 +1,75 @@
+import Combine
+import Foundation
+
+protocol CommunityCommentsBusinessLogic: AnyObject {
+    func viewDidLoad(_ request: CommunityCommentsModel.ViewDidLoad.Request)
+    func sendComment(_ request: CommunityCommentsModel.SendComment.Request)
+}
+
+protocol CommunityCommentsRoutingLogic: AnyObject {
+    func routeToNestedThread(commentId: UUID)
+}
+
+final class CommunityCommentsInteractor: CommunityCommentsBusinessLogic {
+
+    let rootMessage: CommunityMessage
+    let threadParentCommentId: UUID?
+
+    private let presenter: CommunityCommentsPresentationLogic
+    private let store = CommunityStore.shared
+
+    weak var router: CommunityCommentsRoutingLogic?
+
+    private var cancellables = Set<AnyCancellable>()
+    private var didEmitInitialComments = false
+
+    init(
+        presenter: CommunityCommentsPresentationLogic,
+        rootMessage: CommunityMessage,
+        threadParentCommentId: UUID?
+    ) {
+        self.presenter = presenter
+        self.rootMessage = rootMessage
+        self.threadParentCommentId = threadParentCommentId
+    }
+
+    func viewDidLoad(_ request: CommunityCommentsModel.ViewDidLoad.Request) {
+        store.loadIfNeeded()
+        bindComments()
+        pushCommentsToPresenter(scrollAnimated: false)
+    }
+
+    func sendComment(_ request: CommunityCommentsModel.SendComment.Request) {
+        store.addComment(
+            messageId: rootMessage.id,
+            threadParentCommentId: threadParentCommentId,
+            text: request.text
+        )
+    }
+
+    private func bindComments() {
+        store.$comments
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self else { return }
+                let animated = self.didEmitInitialComments
+                self.didEmitInitialComments = true
+                self.pushCommentsToPresenter(scrollAnimated: animated)
+            }
+            .store(in: &cancellables)
+    }
+
+    private func pushCommentsToPresenter(scrollAnimated: Bool) {
+        let list = store.comments(for: rootMessage.id, threadParentCommentId: threadParentCommentId)
+        presenter.presentComments(
+            CommunityCommentsModel.CommentsList.Response(comments: list, scrollAnimated: scrollAnimated)
+        )
+    }
+
+    /// Для шапки «Обсуждение»: комментарий‑родитель в корневой ветке.
+    func parentCommentForThreadHeader() -> CommunityComment? {
+        guard let tid = threadParentCommentId else { return nil }
+        let roots = store.comments(for: rootMessage.id, threadParentCommentId: nil)
+        return roots.first(where: { $0.id == tid })
+    }
+}
