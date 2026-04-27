@@ -28,6 +28,9 @@ final class CommunityCommentsViewController: UIViewController, UITableViewDataSo
     private var cancellables = Set<AnyCancellable>()
 
     private let tableView = UITableView(frame: .zero, style: .plain)
+    private let contextHeader = ThreadContextHeaderView()
+    private var lastContextHeaderSize: CGSize = .zero
+    private var isUpdatingContextHeader = false
     private let inputContainer = UIView()
     private let inputPill = UIView()
     private let inputField = UITextView()
@@ -68,6 +71,8 @@ final class CommunityCommentsViewController: UIViewController, UITableViewDataSo
         tableView.contentInset = .zero
         tableView.estimatedRowHeight = 72
         tableView.register(CommentCell.self, forCellReuseIdentifier: CommentCell.reuseId)
+        contextHeader.backgroundColor = .clear
+        tableView.tableHeaderView = contextHeader
 
         view.addSubview(tableView)
         view.addSubview(inputContainer)
@@ -160,6 +165,8 @@ final class CommunityCommentsViewController: UIViewController, UITableViewDataSo
 
         bind()
         reloadAndScroll(animated: false)
+        updateContextHeader()
+        updateContextHeaderLayoutIfNeeded()
 
         view.layoutIfNeeded()
         textViewDidChange(inputField)
@@ -215,6 +222,7 @@ final class CommunityCommentsViewController: UIViewController, UITableViewDataSo
         updateCommentsTableTopInset()
         updateCommentsTableBottomInset(keyboardOverlap: nil, adjustScroll: false)
         updateInputPillCornerRadius()
+        updateContextHeaderLayoutIfNeeded()
     }
 
     override func viewSafeAreaInsetsDidChange() {
@@ -435,6 +443,8 @@ final class CommunityCommentsViewController: UIViewController, UITableViewDataSo
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.reloadAndScroll(animated: true)
+                self?.updateContextHeader()
+                self?.updateContextHeaderLayoutIfNeeded()
             }
             .store(in: &cancellables)
     }
@@ -443,6 +453,47 @@ final class CommunityCommentsViewController: UIViewController, UITableViewDataSo
         comments = store.comments(for: rootMessage.id, threadParentCommentId: threadParentCommentId)
         tableView.reloadData()
         scrollToBottom(animated: animated)
+    }
+
+    private func updateContextHeader() {
+        if threadParentCommentId == nil {
+            contextHeader.configureAsRootMessage(rootMessage)
+            return
+        }
+        let parentId = threadParentCommentId!
+        let allRootComments = store.comments(for: rootMessage.id, threadParentCommentId: nil)
+        if let parent = allRootComments.first(where: { $0.id == parentId }) {
+            contextHeader.configureAsParentComment(parent)
+        } else {
+            contextHeader.configureAsParentComment(
+                CommunityComment(messageId: rootMessage.id, threadParentCommentId: nil, text: "Комментарий")
+            )
+        }
+    }
+
+    private func updateContextHeaderLayoutIfNeeded() {
+        guard let header = tableView.tableHeaderView else { return }
+        let w = tableView.bounds.width
+        guard w > 0 else { return }
+        guard !isUpdatingContextHeader else { return }
+
+        let target = CGSize(width: w, height: UIView.layoutFittingCompressedSize.height)
+        let fitted = header.systemLayoutSizeFitting(
+            target,
+            withHorizontalFittingPriority: .required,
+            verticalFittingPriority: .fittingSizeLevel
+        )
+        let newSize = CGSize(width: w, height: ceil(fitted.height))
+        let sizeChanged =
+            abs(newSize.width - lastContextHeaderSize.width) > 0.5
+            || abs(newSize.height - lastContextHeaderSize.height) > 0.5
+        guard sizeChanged else { return }
+
+        isUpdatingContextHeader = true
+        lastContextHeaderSize = newSize
+        header.frame = CGRect(origin: .zero, size: newSize)
+        tableView.tableHeaderView = header
+        isUpdatingContextHeader = false
     }
 
     private func scrollToBottom(animated: Bool) {
@@ -518,6 +569,85 @@ final class CommunityCommentsViewController: UIViewController, UITableViewDataSo
             self.updateInputPillCornerRadius()
         }
         updateCommentsTableBottomInset(keyboardOverlap: nil, adjustScroll: true)
+    }
+}
+
+// MARK: - Контекст сверху (пост / комментарий)
+
+private final class ThreadContextHeaderView: UIView {
+    private let badge = UILabel()
+    private let bubble = UIView()
+    private let textLabel = UILabel()
+    private let bottomDivider = UIView()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+
+        badge.translatesAutoresizingMaskIntoConstraints = false
+        badge.font = TMETheme.Fonts.body(12)
+        badge.textColor = .secondaryLabel
+
+        bubble.translatesAutoresizingMaskIntoConstraints = false
+        bubble.backgroundColor = .secondarySystemGroupedBackground
+        bubble.layer.cornerRadius = 16
+        if #available(iOS 13.0, *) { bubble.layer.cornerCurve = .continuous }
+
+        textLabel.translatesAutoresizingMaskIntoConstraints = false
+        textLabel.font = TMETheme.Fonts.body(15)
+        textLabel.textColor = .label
+        textLabel.numberOfLines = 0
+
+        bottomDivider.translatesAutoresizingMaskIntoConstraints = false
+        bottomDivider.backgroundColor = UIColor.separator.withAlphaComponent(0.35)
+
+        addSubview(badge)
+        addSubview(bubble)
+        bubble.addSubview(textLabel)
+        addSubview(bottomDivider)
+
+        NSLayoutConstraint.activate([
+            badge.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+            badge.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
+            badge.topAnchor.constraint(equalTo: topAnchor, constant: 10),
+
+            bubble.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+            bubble.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
+            bubble.topAnchor.constraint(equalTo: badge.bottomAnchor, constant: 6),
+
+            textLabel.leadingAnchor.constraint(equalTo: bubble.leadingAnchor, constant: 12),
+            textLabel.trailingAnchor.constraint(equalTo: bubble.trailingAnchor, constant: -12),
+            textLabel.topAnchor.constraint(equalTo: bubble.topAnchor, constant: 10),
+            textLabel.bottomAnchor.constraint(equalTo: bubble.bottomAnchor, constant: -10),
+
+            bottomDivider.leadingAnchor.constraint(equalTo: leadingAnchor),
+            bottomDivider.trailingAnchor.constraint(equalTo: trailingAnchor),
+            bottomDivider.topAnchor.constraint(equalTo: bubble.bottomAnchor, constant: 12),
+            bottomDivider.heightAnchor.constraint(equalToConstant: 1.0 / UIScreen.main.scale),
+            bottomDivider.bottomAnchor.constraint(equalTo: bottomAnchor)
+        ])
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    func configureAsRootMessage(_ message: CommunityMessage) {
+        badge.text = "Пост"
+        textLabel.text = Self.displayText(for: message)
+    }
+
+    func configureAsParentComment(_ comment: CommunityComment) {
+        badge.text = "Комментарий"
+        textLabel.text = comment.text
+    }
+
+    private static func displayText(for message: CommunityMessage) -> String {
+        switch message.kind {
+        case .post:
+            return message.text
+        case .announcement:
+            guard let a = message.announcement else { return message.text }
+            let t = a.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            return t.isEmpty ? message.text : t
+        }
     }
 }
 
