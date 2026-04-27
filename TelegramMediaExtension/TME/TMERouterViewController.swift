@@ -22,11 +22,6 @@ final class TMERouterViewController: UITableViewController {
             title: "Мои анонсы",
             subtitle: "Сохранённые из сообществ, сортировка по дате",
             build: { AnnouncementsBuilder.build() }
-        ),
-        Row(
-            title: "Настройки (скелет)",
-            subtitle: "Анти-спойлер и др. — позже",
-            build: { TMESettingsBuilder.build() }
         )
     ]
     

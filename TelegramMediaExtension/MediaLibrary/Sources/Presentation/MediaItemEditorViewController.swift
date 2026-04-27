@@ -12,7 +12,7 @@ final class MediaItemEditorViewController: UITableViewController {
             switch self {
             case .create: return "Новый объект"
             case .createPrefilled: return "Новый объект"
-            case .edit: return "Редактирование"
+            case .edit: return ""
             }
         }
     }
@@ -22,6 +22,7 @@ final class MediaItemEditorViewController: UITableViewController {
 
     private var item: MediaItem
     private let keyboardDismissOnTapOutside = MediaLibraryKeyboardDismissOnTapOutside()
+    private var doneButtonView: LiquidGlassBarButtonView?
 
     private enum Section: Int, CaseIterable {
         case main
@@ -54,14 +55,28 @@ final class MediaItemEditorViewController: UITableViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
 
-        title = mode.navigationTitle
+        title = mode.navigationTitle.isEmpty ? item.title : mode.navigationTitle
         tableView.backgroundColor = TMETheme.Colors.groupedBackground
         tableView.rowHeight = UITableView.automaticDimension
         tableView.estimatedRowHeight = 52
         tableView.keyboardDismissMode = .interactive
         keyboardDismissOnTapOutside.attach(to: view)
 
-        navigationItem.rightBarButtonItem = UIBarButtonItem(title: "Сохранить", style: .done, target: self, action: #selector(saveTapped))
+        let doneView = LiquidGlassBarButtonView(
+            symbolName: "checkmark",
+            accessibilityLabel: "Сохранить",
+            symbolPointSize: 17,
+            showsBackground: false,
+            action: { [weak self] in self?.saveTapped() }
+        )
+        doneView.updateBlurStyle(for: traitCollection)
+        doneButtonView = doneView
+        navigationItem.rightBarButtonItem = UIBarButtonItem(customView: doneView)
+    }
+
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        doneButtonView?.updateBlurStyle(for: traitCollection)
     }
 
     override func viewWillAppear(_ animated: Bool) {

@@ -15,11 +15,8 @@ final class TMERootTabBarController: UITabBarController {
         
         let announcements = TMENavigationController(rootViewController: AnnouncementsBuilder.build())
         announcements.tabBarItem = UITabBarItem(title: "Анонсы", image: UIImage(systemName: "megaphone"), tag: 2)
-        
-        let settings = TMENavigationController(rootViewController: TMESettingsViewController())
-        settings.tabBarItem = UITabBarItem(title: "Настройки", image: UIImage(systemName: "gearshape"), tag: 3)
-        
-        self.viewControllers = [media, communities, announcements, settings]
+
+        self.viewControllers = [media, communities, announcements]
     }
 }
 

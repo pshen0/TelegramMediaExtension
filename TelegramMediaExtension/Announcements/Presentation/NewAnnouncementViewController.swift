@@ -18,8 +18,8 @@ final class NewAnnouncementViewController: UITableViewController {
     private var linkText: String = ""
     private var pickedLocation: CommunityLocation?
     private var imageFileName: String?
-    private var mediaLibraryChromeObserver: NSObjectProtocol?
     private let keyboardDismissOnTapOutside = MediaLibraryKeyboardDismissOnTapOutside()
+    private var doneButtonView: LiquidGlassBarButtonView?
 
     init(communityId: UUID) {
         mode = .community(communityId)
@@ -52,13 +52,23 @@ final class NewAnnouncementViewController: UITableViewController {
         keyboardDismissOnTapOutside.attach(to: view)
 
         navigationItem.leftBarButtonItem = UIBarButtonItem(title: "Отмена", style: .plain, target: self, action: #selector(cancelTapped))
-        // Компактнее, чтобы не «съедать» место заголовка
-        navigationItem.rightBarButtonItem = UIBarButtonItem(image: UIImage(systemName: "checkmark"), style: .done, target: self, action: #selector(publishTapped))
-        if case .editSaved = mode {
-            navigationItem.rightBarButtonItem?.accessibilityLabel = "Сохранить"
-        } else {
-            navigationItem.rightBarButtonItem?.accessibilityLabel = "Опубликовать"
+        let a11y: String
+        switch mode {
+        case .editSaved:
+            a11y = "Сохранить"
+        default:
+            a11y = "Опубликовать"
         }
+        let doneView = LiquidGlassBarButtonView(
+            symbolName: "checkmark",
+            accessibilityLabel: a11y,
+            symbolPointSize: 17,
+            showsBackground: false,
+            action: { [weak self] in self?.publishTapped() }
+        )
+        doneView.updateBlurStyle(for: traitCollection)
+        doneButtonView = doneView
+        navigationItem.rightBarButtonItem = UIBarButtonItem(customView: doneView)
 
         store.loadIfNeeded()
         if case .editSaved(let id) = mode, let a = store.savedAnnouncements.first(where: { $0.id == id }) {
@@ -70,39 +80,19 @@ final class NewAnnouncementViewController: UITableViewController {
             imageFileName = a.imageFileName
         }
 
-        applyMediaLibraryChromeToNavigation()
-        mediaLibraryChromeObserver = NotificationCenter.default.addObserver(
-            forName: .mediaLibraryBannerColorDidChange,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.applyMediaLibraryChromeToNavigation()
-        }
-
         tableView.reloadData()
-    }
-
-    deinit {
-        if let mediaLibraryChromeObserver {
-            NotificationCenter.default.removeObserver(mediaLibraryChromeObserver)
-        }
     }
 
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
-        applyMediaLibraryChromeToNavigation()
+        doneButtonView?.updateBlurStyle(for: traitCollection)
+    }
+
+    deinit {
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        applyMediaLibraryChromeToNavigation()
-    }
-
-    private func applyMediaLibraryChromeToNavigation() {
-        let c = MediaLibraryHeaderBannerColor.catalogChromeAccent(for: traitCollection)
-        navigationItem.leftBarButtonItem?.tintColor = c
-        navigationItem.rightBarButtonItem?.tintColor = c
-        navigationController?.navigationBar.tintColor = c
     }
 
     @objc private func cancelTapped() {
@@ -192,7 +182,7 @@ final class NewAnnouncementViewController: UITableViewController {
         }
         if indexPath.section == 0 && indexPath.row == 2 {
             let cell = UITableViewCell(style: .value1, reuseIdentifier: nil)
-            cell.textLabel?.text = "Картинка"
+            cell.textLabel?.text = "Изображение"
             cell.detailTextLabel?.text = imageFileName == nil ? "Добавить" : "Выбрана"
             cell.accessoryType = .disclosureIndicator
             cell.backgroundConfiguration = UIBackgroundConfiguration.listGroupedCell()
@@ -286,7 +276,6 @@ private final class DatePickerSheet: UIViewController {
         view.backgroundColor = .systemBackground
         title = "Дата"
         navigationItem.rightBarButtonItem = UIBarButtonItem(title: "Готово", style: .done, target: self, action: #selector(doneTapped))
-        applyMediaLibraryChromeToNavigationBar()
 
         picker.preferredDatePickerStyle = .wheels
         picker.datePickerMode = .dateAndTime
@@ -300,18 +289,10 @@ private final class DatePickerSheet: UIViewController {
 
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
-        applyMediaLibraryChromeToNavigationBar()
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        applyMediaLibraryChromeToNavigationBar()
-    }
-
-    private func applyMediaLibraryChromeToNavigationBar() {
-        let c = MediaLibraryHeaderBannerColor.catalogChromeAccent(for: traitCollection)
-        navigationItem.rightBarButtonItem?.tintColor = c
-        navigationController?.navigationBar.tintColor = c
     }
 
     @objc private func doneTapped() {
@@ -386,20 +367,13 @@ private final class MapPointPickerViewController: UIViewController, MKMapViewDel
 
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
-        applyMediaLibraryChrome()
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        applyMediaLibraryChrome()
     }
 
-    private func applyMediaLibraryChrome() {
-        let c = MediaLibraryHeaderBannerColor.catalogChromeAccent(for: traitCollection)
-        pin.tintColor = c
-        navigationItem.rightBarButtonItem?.tintColor = c
-        navigationController?.navigationBar.tintColor = c
-    }
+    private func applyMediaLibraryChrome() {}
 
     @objc private func doneTapped() {
         let c = map.centerCoordinate

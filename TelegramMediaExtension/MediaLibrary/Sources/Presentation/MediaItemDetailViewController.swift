@@ -19,9 +19,7 @@ final class MediaItemDetailViewController: UIViewController {
 
     private var bannerColorObserver: NSObjectProtocol?
     private var posterUsesCatalogPlaceholder = false
-    private var liquidButtons: [LiquidGlassBarButtonView] = []
-    private weak var favoriteButtonView: LiquidGlassBarButtonView?
-    private weak var editButtonView: LiquidGlassBarButtonView?
+    private var favoriteBarButton: UIBarButtonItem?
 
     init(item: MediaItem) {
         self.item = item
@@ -39,6 +37,9 @@ final class MediaItemDetailViewController: UIViewController {
         navigationItem.title = ""
 
         scroll.alwaysBounceVertical = true
+        if #available(iOS 11.0, *) {
+            scroll.contentInsetAdjustmentBehavior = .automatic
+        }
         stack.axis = .vertical
         stack.spacing = 14
         stack.isLayoutMarginsRelativeArrangement = true
@@ -84,31 +85,22 @@ final class MediaItemDetailViewController: UIViewController {
         tagsBody.textColor = TMETheme.Colors.accent
         tagsBody.numberOfLines = 0
 
-        let moreView = LiquidGlassBarButtonView(symbolName: "ellipsis", accessibilityLabel: "Ещё") { [weak self] in
-            self?.moreTapped()
-        }
-        let editView = LiquidGlassBarButtonView(symbolName: "pencil", accessibilityLabel: "Изменить") { [weak self] in
-            self?.editTapped()
-        }
-        let favView = LiquidGlassBarButtonView(symbolName: favoriteSymbolName(), accessibilityLabel: "Избранное") { [weak self] in
-            self?.favoriteTapped()
-        }
-        liquidButtons = [moreView, editView, favView]
-        editButtonView = editView
-        favoriteButtonView = favView
-
-        navigationItem.rightBarButtonItems = [
-            UIBarButtonItem(customView: moreView),
-            UIBarButtonItem(customView: editView),
-            UIBarButtonItem(customView: favView)
-        ]
+        let more = UIBarButtonItem(image: UIImage(systemName: "ellipsis"), style: .plain, target: self, action: #selector(moreTapped))
+        more.accessibilityLabel = "Ещё"
+        let edit = UIBarButtonItem(image: UIImage(systemName: "pencil"), style: .plain, target: self, action: #selector(editTapped))
+        edit.accessibilityLabel = "Изменить"
+        let fav = UIBarButtonItem(image: UIImage(systemName: favoriteSymbolName()), style: .plain, target: self, action: #selector(favoriteTapped))
+        fav.accessibilityLabel = "Избранное"
+        favoriteBarButton = fav
+        navigationItem.rightBarButtonItems = [more, edit, fav]
 
         scroll.translatesAutoresizingMaskIntoConstraints = false
         stack.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(scroll)
         scroll.addSubview(stack)
         NSLayoutConstraint.activate([
-            scroll.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            // Важно: скролл идёт под навбаром, чтобы `scrollEdgeAppearance` работал как на списках (blur появляется при прокрутке).
+            scroll.topAnchor.constraint(equalTo: view.topAnchor),
             scroll.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             scroll.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             scroll.bottomAnchor.constraint(equalTo: view.bottomAnchor),
@@ -213,9 +205,6 @@ final class MediaItemDetailViewController: UIViewController {
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
         applyPosterPlaceholderColorsIfNeeded()
-        for b in liquidButtons {
-            b.updateBlurStyle(for: traitCollection)
-        }
     }
 
     private func applyPosterPlaceholderColorsIfNeeded() {
@@ -234,14 +223,14 @@ final class MediaItemDetailViewController: UIViewController {
     }
 
     private func refreshRightBarButtons() {
-        favoriteButtonView?.setSymbolName(favoriteSymbolName())
+        favoriteBarButton?.image = UIImage(systemName: favoriteSymbolName())
     }
 
     private func favoriteSymbolName() -> String {
         item.isFavorite ? "star.fill" : "star"
     }
 
-    private func favoriteTapped() {
+    @objc private func favoriteTapped() {
         item.isFavorite.toggle()
         MediaLibraryStore.shared.upsert(item)
         refreshRightBarButtons()
@@ -258,7 +247,7 @@ final class MediaItemDetailViewController: UIViewController {
         return parts.isEmpty ? "Прогресс не задан" : parts.joined(separator: " · ")
     }
 
-    private func editTapped() {
+    @objc private func editTapped() {
         let editor = MediaItemEditorViewController(mode: .edit(existing: item)) { [weak self] updated in
             MediaLibraryStore.shared.upsert(updated)
             self?.item = updated
@@ -267,7 +256,7 @@ final class MediaItemDetailViewController: UIViewController {
         navigationController?.pushViewController(editor, animated: true)
     }
 
-    private func moreTapped() {
+    @objc private func moreTapped() {
         let ac = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
         ac.addAction(UIAlertAction(title: "Поделиться", style: .default) { [weak self] _ in
             guard let self else { return }

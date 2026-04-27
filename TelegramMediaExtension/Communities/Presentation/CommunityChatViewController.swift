@@ -486,6 +486,15 @@ final class CommunityChatViewController: UIViewController, UITableViewDataSource
         sendCfg.background.cornerRadius = r
         sendButton.configuration = sendCfg
 
+        var tagCfg = UIButton.Configuration.plain()
+        tagCfg.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(pointSize: 13, weight: .bold)
+        tagCfg.image = UIImage(systemName: pendingSpoilerTags.isEmpty ? "tag" : "tag.fill")
+        // Заполняем сам тег (`tag.fill`), без «круга» вокруг.
+        tagCfg.baseForegroundColor = accent
+        tagCfg.background.backgroundColor = .clear
+        tagCfg.background.cornerRadius = r
+        spoilerTagButton.configuration = tagCfg
+
         var annCfg = UIButton.Configuration.plain()
         annCfg.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(pointSize: 17, weight: .medium)
         annCfg.image = UIImage(systemName: "sparkles")
@@ -688,7 +697,10 @@ final class CommunityChatViewController: UIViewController, UITableViewDataSource
     private func refreshSpoilerTagButton() {
         let imgName = pendingSpoilerTags.isEmpty ? "tag" : "tag.fill"
         spoilerTagButton.setImage(UIImage(systemName: imgName), for: .normal)
+        spoilerTagButton.configuration?.image = UIImage(systemName: imgName)
         spoilerTagButton.accessibilityValue = pendingSpoilerTags.isEmpty ? nil : "\(pendingSpoilerTags.count)"
+        // Обновить заливку/цвет, если состояние изменилось вне traitCollectionDidChange.
+        applyMediaLibraryChromeToInputBar()
     }
 
     private func appendSpoilerTagToInputAndState(_ tag: CommunitySpoilerTag) {
@@ -858,6 +870,7 @@ private final class EditCommunityProfileViewController: UITableViewController, P
     private var bannerColorObserver: NSObjectProtocol?
     private var editedTitle = ""
     private let keyboardDismissOnTapOutside = MediaLibraryKeyboardDismissOnTapOutside()
+    private var doneButtonView: LiquidGlassBarButtonView?
 
     init(communityId: UUID) {
         self.communityId = communityId
@@ -869,7 +882,7 @@ private final class EditCommunityProfileViewController: UITableViewController, P
     override func viewDidLoad() {
         super.viewDidLoad()
         navigationItem.largeTitleDisplayMode = .never
-        navigationItem.titleView = makeNavTitleView("Изменить")
+        navigationItem.titleView = nil
         tableView.backgroundColor = TMETheme.Colors.groupedBackground
         tableView.separatorColor = TMETheme.TableView.separatorColor
         tableView.separatorInset = TMETheme.TableView.separatorInset
@@ -879,13 +892,20 @@ private final class EditCommunityProfileViewController: UITableViewController, P
         keyboardDismissOnTapOutside.attach(to: view)
 
         navigationItem.leftBarButtonItem = UIBarButtonItem(title: "Отмена", style: .plain, target: self, action: #selector(cancelTapped))
-        navigationItem.rightBarButtonItem = UIBarButtonItem(image: UIImage(systemName: "checkmark"), style: .done, target: self, action: #selector(saveTapped))
-        navigationItem.rightBarButtonItem?.accessibilityLabel = "Сохранить"
+        let doneView = LiquidGlassBarButtonView(
+            symbolName: "checkmark",
+            accessibilityLabel: "Сохранить",
+            symbolPointSize: 17,
+            showsBackground: false,
+            action: { [weak self] in self?.saveTapped() }
+        )
+        doneView.updateBlurStyle(for: traitCollection)
+        doneButtonView = doneView
+        navigationItem.rightBarButtonItem = UIBarButtonItem(customView: doneView)
 
         tableView.register(CommunityAvatarEditCell.self, forCellReuseIdentifier: CommunityAvatarEditCell.reuseId)
 
         reloadFromStore()
-        applyEditChromeColors()
 
         bannerColorObserver = NotificationCenter.default.addObserver(
             forName: .mediaLibraryBannerColorDidChange,
@@ -894,6 +914,14 @@ private final class EditCommunityProfileViewController: UITableViewController, P
         ) { [weak self] _ in
             guard let self, self.showsAvatarPlaceholder else { return }
             self.tableView.reloadSections(IndexSet(integer: Section.avatar.rawValue), with: .none)
+        }
+    }
+
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        doneButtonView?.updateBlurStyle(for: traitCollection)
+        if showsAvatarPlaceholder {
+            tableView.reloadSections(IndexSet(integer: Section.avatar.rawValue), with: .none)
         }
     }
 
@@ -914,29 +942,9 @@ private final class EditCommunityProfileViewController: UITableViewController, P
         return label
     }
 
-    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
-        super.traitCollectionDidChange(previousTraitCollection)
-        applyEditChromeColors()
-        if showsAvatarPlaceholder {
-            tableView.reloadSections(IndexSet(integer: Section.avatar.rawValue), with: .none)
-        }
-    }
-
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        applyEditChromeColors()
-    }
-
-    private func applyEditChromeColors() {
-        let c = MediaLibraryHeaderBannerColor.catalogChromeAccent(for: traitCollection)
-        navigationItem.leftBarButtonItem?.tintColor = c
-        navigationItem.rightBarButtonItem?.tintColor = c
-        navigationController?.navigationBar.tintColor = c
-        for cell in tableView.visibleCells {
-            if let ac = cell as? CommunityAvatarEditCell {
-                ac.changePhotoButton.setTitleColor(c, for: .normal)
-            }
-        }
+        // Кнопки в навбаре — системного tint.
     }
 
     private func applyAvatarPlaceholderChrome(to avatarView: UIImageView) {
@@ -972,7 +980,6 @@ private final class EditCommunityProfileViewController: UITableViewController, P
             let cell = tableView.dequeueReusableCell(withIdentifier: CommunityAvatarEditCell.reuseId, for: indexPath) as! CommunityAvatarEditCell
             cell.backgroundConfiguration = UIBackgroundConfiguration.clear()
             cell.onPhotoAction = { [weak self] in self?.changePhotoTapped() }
-            cell.changePhotoButton.setTitleColor(MediaLibraryHeaderBannerColor.catalogChromeAccent(for: traitCollection), for: .normal)
             configureAvatar(cell)
             return cell
         case .name:
@@ -1695,19 +1702,30 @@ private final class SpoilerOverlayView: UIControl {
 
         // Компактная плашка по центру.
         let maxW = min(bounds.width - 16, 220)
-        let contentW = max(130, maxW)
 
-        let titleH = ceil(titleLabel.sizeThatFits(CGSize(width: contentW - 12, height: 200)).height)
-        let subH = ceil(subtitleLabel.sizeThatFits(CGSize(width: contentW - 12, height: 200)).height)
-        let totalH = 6 + titleH + 3 + subH + 6
+        let pad: CGFloat = 6
+        let interLine: CGFloat = 3
+        let maxInnerW = max(60, maxW - pad * 2)
+
+        // Делаем ширину плашки по фактической ширине текста, а не фиксированной,
+        // иначе визуально горизонтальные отступы выглядят больше вертикальных.
+        let titleSize = titleLabel.sizeThatFits(CGSize(width: maxInnerW, height: 200))
+        let subSize = subtitleLabel.sizeThatFits(CGSize(width: maxInnerW, height: 200))
+        let usedInnerW = min(maxInnerW, max(ceil(titleSize.width), ceil(subSize.width)))
+        let contentW = max(120, min(maxW, usedInnerW + pad * 2))
+        let innerW = contentW - pad * 2
+
+        let titleH = ceil(titleLabel.sizeThatFits(CGSize(width: innerW, height: 200)).height)
+        let subH = ceil(subtitleLabel.sizeThatFits(CGSize(width: innerW, height: 200)).height)
+        let totalH = pad + titleH + interLine + subH + pad
 
         pill.bounds = CGRect(x: 0, y: 0, width: contentW, height: totalH)
         pill.center = CGPoint(x: bounds.midX, y: bounds.midY)
 
-        var y: CGFloat = 6
-        titleLabel.frame = CGRect(x: 6, y: y, width: contentW - 12, height: titleH)
-        y = titleLabel.frame.maxY + 3
-        subtitleLabel.frame = CGRect(x: 6, y: y, width: contentW - 12, height: subH)
+        var y: CGFloat = pad
+        titleLabel.frame = CGRect(x: pad, y: y, width: innerW, height: titleH)
+        y = titleLabel.frame.maxY + interLine
+        subtitleLabel.frame = CGRect(x: pad, y: y, width: innerW, height: subH)
     }
 
     private func updateAccessibility() {

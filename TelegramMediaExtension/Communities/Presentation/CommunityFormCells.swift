@@ -154,6 +154,7 @@ final class CommunityAvatarEditCell: UITableViewCell {
         changePhotoButton.translatesAutoresizingMaskIntoConstraints = false
         changePhotoButton.setTitle("Сменить фото", for: .normal)
         changePhotoButton.titleLabel?.font = TMETheme.Fonts.body(15)
+        changePhotoButton.setTitleColor(.label, for: .normal)
         changePhotoButton.addTarget(self, action: #selector(photoTapped), for: .touchUpInside)
 
         contentView.addSubview(avatarView)

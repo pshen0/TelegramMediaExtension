@@ -47,6 +47,20 @@ final class MediaLibraryChromeHeaderView: UIView {
 
     private(set) var showsSearchDismissButton = false
 
+    /// Если `false`, строка поиска (и кнопка закрытия) скрыты, высота шапки становится компактнее.
+    var showsSearchBar: Bool = true {
+        didSet {
+            guard showsSearchBar != oldValue else { return }
+            searchBar.isHidden = !showsSearchBar
+            if !showsSearchBar {
+                searchDismissContainer.isHidden = true
+                searchDismissContainer.alpha = 0
+                showsSearchDismissButton = false
+            }
+            setNeedsLayout()
+        }
+    }
+
     /// Если `false`, блок вкладок под поиском скрыт (например, экран «Анонсы» в медиатеке).
     var showsFolderTabs: Bool = true {
         didSet {
@@ -108,16 +122,25 @@ final class MediaLibraryChromeHeaderView: UIView {
 
     func preferredHeight(forWidth width: CGFloat) -> CGFloat {
         let gradientH = coloredBannerHeight(forWidth: width)
-        let dismissReserve: CGFloat = Self.searchDismissSize + Self.searchDismissSpacing
-        let searchAvailW = width - Self.searchHorizontalInset * 2 - dismissReserve
-        let searchSize = searchBar.sizeThatFits(CGSize(width: max(120, searchAvailW), height: 120))
-        let searchH = max(Self.searchMinHeight, searchSize.height)
         let raw: CGFloat
-        if showsFolderTabs {
-            let tabsCardH = MediaLibraryFolderTabsView.preferredHeight + Self.tabsCardVerticalPadding * 2
-            raw = gradientH + Self.searchTopSpacing + searchH + Self.searchToTabsSpacing + tabsCardH
+        if showsSearchBar {
+            let dismissReserve: CGFloat = Self.searchDismissSize + Self.searchDismissSpacing
+            let searchAvailW = width - Self.searchHorizontalInset * 2 - dismissReserve
+            let searchSize = searchBar.sizeThatFits(CGSize(width: max(120, searchAvailW), height: 120))
+            let searchH = max(Self.searchMinHeight, searchSize.height)
+            if showsFolderTabs {
+                let tabsCardH = MediaLibraryFolderTabsView.preferredHeight + Self.tabsCardVerticalPadding * 2
+                raw = gradientH + Self.searchTopSpacing + searchH + Self.searchToTabsSpacing + tabsCardH
+            } else {
+                raw = gradientH + Self.searchTopSpacing + searchH + 10
+            }
         } else {
-            raw = gradientH + Self.searchTopSpacing + searchH + 10
+            if showsFolderTabs {
+                let tabsCardH = MediaLibraryFolderTabsView.preferredHeight + Self.tabsCardVerticalPadding * 2
+                raw = gradientH + 10 + tabsCardH
+            } else {
+                raw = gradientH + 10
+            }
         }
         return ceil(raw * UIScreen.main.scale) / UIScreen.main.scale
     }
@@ -338,6 +361,32 @@ final class MediaLibraryChromeHeaderView: UIView {
     private func layoutSearchRowAndTabs() {
         let w = bounds.width
         let gradientH = coloredBannerHeight(forWidth: w)
+
+        guard showsSearchBar else {
+            searchBar.frame = .zero
+            searchDismissGlass.frame = .zero
+            searchDismissButton.frame = .zero
+            searchDismissContainer.frame = .zero
+            if showsFolderTabs {
+                let tabsCardH = MediaLibraryFolderTabsView.preferredHeight + Self.tabsCardVerticalPadding * 2
+                let cardInset: CGFloat = 16
+                let cardW = w - cardInset * 2
+                let cardY = gradientH + 10
+                tabsCardShadowContainer.frame = CGRect(x: cardInset, y: cardY, width: cardW, height: tabsCardH)
+                tabsCardClipView.frame = tabsCardShadowContainer.bounds
+                folderTabs.frame = CGRect(
+                    x: 0,
+                    y: Self.tabsCardVerticalPadding,
+                    width: cardW,
+                    height: MediaLibraryFolderTabsView.preferredHeight
+                )
+            } else {
+                tabsCardShadowContainer.frame = .zero
+                tabsCardClipView.frame = .zero
+                folderTabs.frame = .zero
+            }
+            return
+        }
 
         let searchSize = searchBar.sizeThatFits(CGSize(width: w, height: 120))
         let searchH = max(Self.searchMinHeight, searchSize.height)

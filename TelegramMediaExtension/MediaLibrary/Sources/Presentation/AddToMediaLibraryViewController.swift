@@ -62,6 +62,8 @@ final class AddToMediaLibraryViewController: UIViewController {
 /// Заглушка вкладки «Создать вручную» + переход к полной форме.
 private final class MediaLibraryManualAddViewController: UIViewController {
     weak var coordinator: AddToMediaLibraryViewController?
+    private var bannerColorObserver: NSObjectProtocol?
+    private weak var openFormButton: UIButton?
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -77,6 +79,8 @@ private final class MediaLibraryManualAddViewController: UIViewController {
         let button = UIButton(type: .system)
         button.setTitle("Заполнить форму", for: .normal)
         button.titleLabel?.font = TMETheme.Fonts.titleSemibold(17)
+        openFormButton = button
+        applyChromeAccent()
         button.addTarget(self, action: #selector(openForm), for: .touchUpInside)
 
         label.translatesAutoresizingMaskIntoConstraints = false
@@ -91,6 +95,29 @@ private final class MediaLibraryManualAddViewController: UIViewController {
             button.topAnchor.constraint(equalTo: label.bottomAnchor, constant: 24),
             button.centerXAnchor.constraint(equalTo: view.centerXAnchor)
         ])
+
+        bannerColorObserver = NotificationCenter.default.addObserver(
+            forName: .mediaLibraryBannerColorDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.applyChromeAccent()
+        }
+    }
+
+    deinit {
+        if let bannerColorObserver {
+            NotificationCenter.default.removeObserver(bannerColorObserver)
+        }
+    }
+
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        applyChromeAccent()
+    }
+
+    private func applyChromeAccent() {
+        openFormButton?.tintColor = MediaLibraryHeaderBannerColor.catalogChromeAccent(for: traitCollection)
     }
 
     @objc private func openForm() {
