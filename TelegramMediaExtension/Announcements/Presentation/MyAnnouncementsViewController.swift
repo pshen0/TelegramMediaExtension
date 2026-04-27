@@ -6,7 +6,8 @@ final class MyAnnouncementsViewController: AnnouncementsChromeListTableViewContr
         super.init(
             listTitle: "Мои анонсы",
             searchPlaceholder: "Поиск по названию",
-            searchScope: .titleOnly
+            searchScope: .titleOnly,
+            headerBannerImage: .duck2
         )
     }
 

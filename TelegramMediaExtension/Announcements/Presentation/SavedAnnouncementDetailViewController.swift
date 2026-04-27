@@ -111,7 +111,6 @@ final class SavedAnnouncementDetailViewController: UIViewController {
         )
         edit.accessibilityLabel = "Изменить"
         navigationItem.rightBarButtonItem = edit
-        applyEditBarButtonTint()
 
         store.loadIfNeeded()
         loadBannerImageIfNeeded()
@@ -126,20 +125,13 @@ final class SavedAnnouncementDetailViewController: UIViewController {
         }
         loadBannerImageIfNeeded()
         rebuildContentStack()
-        applyEditBarButtonTint()
     }
 
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
-        applyEditBarButtonTint()
         if let b = announcementLinkButton {
             applyAnnouncementLinkChrome(to: b)
         }
-    }
-
-    private func applyEditBarButtonTint() {
-        let c = MediaLibraryHeaderBannerColor.catalogChromeAccent(for: traitCollection)
-        navigationItem.rightBarButtonItem?.tintColor = c
     }
 
     private func applyAnnouncementLinkChrome(to btn: UIButton) {

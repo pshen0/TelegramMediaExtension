@@ -11,6 +11,7 @@ class AnnouncementsChromeListTableViewController: UITableViewController, UISearc
     private let listTitle: String
     private let searchPlaceholder: String
     private let searchScope: SearchScope
+    private let headerBannerImage: MediaLibraryChromeHeaderView.BannerImage
 
     private let store = CommunityStore.shared
     private var cancellables = Set<AnyCancellable>()
@@ -24,10 +25,16 @@ class AnnouncementsChromeListTableViewController: UITableViewController, UISearc
     private var bannerColorObserver: NSObjectProtocol?
     private let keyboardDismissOnTapOutside = MediaLibraryKeyboardDismissOnTapOutside()
 
-    init(listTitle: String, searchPlaceholder: String, searchScope: SearchScope) {
+    init(
+        listTitle: String,
+        searchPlaceholder: String,
+        searchScope: SearchScope,
+        headerBannerImage: MediaLibraryChromeHeaderView.BannerImage = .duck1
+    ) {
         self.listTitle = listTitle
         self.searchPlaceholder = searchPlaceholder
         self.searchScope = searchScope
+        self.headerBannerImage = headerBannerImage
         super.init(style: .plain)
     }
 
@@ -58,6 +65,7 @@ class AnnouncementsChromeListTableViewController: UITableViewController, UISearc
         navigationItem.rightBarButtonItem?.accessibilityLabel = "Новый анонс"
 
         chromeHeader.showsFolderTabs = false
+        chromeHeader.bannerImage = headerBannerImage
         chromeHeader.searchBar.placeholder = searchPlaceholder
         chromeHeader.searchBar.delegate = self
         chromeHeader.onBannerTap = { [weak self] in
