@@ -1,6 +1,6 @@
 import UIKit
 
-/// Поле «подпись слева — ввод справа» как в форме анонса (`NewAnnouncementViewController`).
+/// Поле «подпись слева — ввод справа» как в форме анонса (`NewAnnouncement`).
 final class CommunityTextFieldCell: UITableViewCell, UITextFieldDelegate {
     private let onChange: (String) -> Void
     private let titleView = UILabel()

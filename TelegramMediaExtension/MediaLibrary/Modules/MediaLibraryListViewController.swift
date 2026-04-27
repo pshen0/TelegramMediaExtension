@@ -441,7 +441,7 @@ final class MediaLibraryListViewController: UITableViewController, UISearchBarDe
             self?.chromeHeader.searchBar.becomeFirstResponder()
         }
         let announcements = UIAction(title: "Анонсы", image: UIImage(systemName: "calendar")) { [weak self] _ in
-            self?.navigationController?.pushViewController(MediaLibraryAnnouncementsViewController(), animated: true)
+            self?.navigationController?.pushViewController(AnnouncementsChromeListBuilder.mediaLibraryAnnouncements(), animated: true)
         }
         return UIMenu(children: [announcements, filter, sort, grid, search])
     }

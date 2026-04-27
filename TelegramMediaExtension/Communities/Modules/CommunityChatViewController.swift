@@ -568,7 +568,7 @@ final class CommunityChatViewController: UIViewController, UITableViewDataSource
     }
 
     @objc private func newAnnouncementTapped() {
-        let vc = NewAnnouncementViewController(communityId: communityId)
+        let vc = NewAnnouncementBuilder.build(communityId: communityId)
         let nav = UINavigationController(rootViewController: vc)
         nav.modalPresentationStyle = .pageSheet
         present(nav, animated: true)

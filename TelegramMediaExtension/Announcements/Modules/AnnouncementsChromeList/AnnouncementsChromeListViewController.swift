@@ -1,39 +1,31 @@
-import Combine
 import UIKit
 
-/// Список сохранённых анонсов с шапкой как в медиатеке (`MediaLibraryChromeHeaderView`) и поиском.
-class AnnouncementsChromeListTableViewController: UITableViewController, UISearchBarDelegate {
-    enum SearchScope {
-        case titleOnly
-        case titleDetailsLink
-    }
+/// Список сохранённых анонсов с шапкой как в медиатеке (`MediaLibraryChromeHeaderView`) и поиском (SVIP: View → Interactor → Presenter).
+final class AnnouncementsChromeListViewController: UITableViewController {
 
+    private let interactor: AnnouncementsChromeListBusinessLogic
     private let listTitle: String
     private let searchPlaceholder: String
-    private let searchScope: SearchScope
     private let headerBannerImage: MediaLibraryChromeHeaderView.BannerImage
 
-    private let store = CommunityStore.shared
-    private var cancellables = Set<AnyCancellable>()
-
-    private var filtered: [SavedAnnouncement] = []
-    private var query: String = ""
+    private var rows: [AnnouncementsChromeListModel.AnnouncementsChanged.Row] = []
 
     private let chromeHeader = MediaLibraryChromeHeaderView()
+    private let headerWrap = UIView()
     private var lastTableHeaderSize: CGSize = .zero
     private var isUpdatingTableHeader = false
     private var bannerColorObserver: NSObjectProtocol?
     private let keyboardDismissOnTapOutside = MediaLibraryKeyboardDismissOnTapOutside()
 
     init(
+        interactor: AnnouncementsChromeListBusinessLogic,
         listTitle: String,
         searchPlaceholder: String,
-        searchScope: SearchScope,
         headerBannerImage: MediaLibraryChromeHeaderView.BannerImage = .duck1
     ) {
+        self.interactor = interactor
         self.listTitle = listTitle
         self.searchPlaceholder = searchPlaceholder
-        self.searchScope = searchScope
         self.headerBannerImage = headerBannerImage
         super.init(style: .plain)
     }
@@ -74,7 +66,10 @@ class AnnouncementsChromeListTableViewController: UITableViewController, UISearc
         chromeHeader.onSearchDismiss = { [weak self] in
             self?.dismissSearchKeyboardAndClear()
         }
-        tableView.tableHeaderView = chromeHeader
+
+        headerWrap.addSubview(chromeHeader)
+        chromeHeader.pin(to: headerWrap, 0)
+        tableView.tableHeaderView = headerWrap
 
         bannerColorObserver = NotificationCenter.default.addObserver(
             forName: .mediaLibraryBannerColorDidChange,
@@ -84,24 +79,13 @@ class AnnouncementsChromeListTableViewController: UITableViewController, UISearc
             self?.applyBannerChromeColors()
         }
 
-        store.loadIfNeeded()
-        bind()
-        applyFilter()
+        interactor.viewDidLoad(AnnouncementsChromeListModel.ViewDidLoad.Request())
     }
 
     deinit {
         if let bannerColorObserver {
             NotificationCenter.default.removeObserver(bannerColorObserver)
         }
-    }
-
-    private func bind() {
-        store.$savedAnnouncements
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                self?.applyFilter()
-            }
-            .store(in: &cancellables)
     }
 
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
@@ -112,8 +96,7 @@ class AnnouncementsChromeListTableViewController: UITableViewController, UISearc
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         applyChromeNavigationAppearance()
-        store.loadIfNeeded()
-        applyFilter()
+        interactor.viewWillAppear()
     }
 
     override func viewWillDisappear(_ animated: Bool) {
@@ -150,8 +133,8 @@ class AnnouncementsChromeListTableViewController: UITableViewController, UISearc
         if sizeChanged {
             isUpdatingTableHeader = true
             lastTableHeaderSize = newSize
-            chromeHeader.frame = CGRect(origin: .zero, size: newSize)
-            tableView.tableHeaderView = chromeHeader
+            headerWrap.frame = CGRect(origin: .zero, size: newSize)
+            tableView.tableHeaderView = headerWrap
             isUpdatingTableHeader = false
         }
         updateHeaderScrollFade()
@@ -273,38 +256,57 @@ class AnnouncementsChromeListTableViewController: UITableViewController, UISearc
     }
 
     @objc private func addPersonalAnnouncementTapped() {
-        let vc = NewAnnouncementViewController(personal: ())
+        let vc = NewAnnouncementBuilder.buildPersonal()
         let nav = UINavigationController(rootViewController: vc)
         nav.modalPresentationStyle = .pageSheet
         present(nav, animated: true)
     }
 
-    private func applyFilter() {
-        let q = query.lowercased()
-        let base = store.savedAnnouncements
-        if q.isEmpty {
-            filtered = base
-        } else {
-            switch searchScope {
-            case .titleOnly:
-                filtered = base.filter { $0.title.lowercased().contains(q) }
-            case .titleDetailsLink:
-                filtered = base.filter { a in
-                    if a.title.lowercased().contains(q) { return true }
-                    if (a.details ?? "").lowercased().contains(q) { return true }
-                    if (a.linkURL ?? "").lowercased().contains(q) { return true }
-                    return false
-                }
-            }
-        }
-        tableView.reloadData()
+    // MARK: - UITableView
+
+    override func numberOfSections(in tableView: UITableView) -> Int { 1 }
+
+    override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+        rows.count
     }
 
-    // MARK: - UISearchBarDelegate
+    override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        let cell = tableView.dequeueReusableCell(withIdentifier: "cell", for: indexPath)
+        let row = rows[indexPath.row]
+        var content = cell.defaultContentConfiguration()
+        content.text = row.title
+        content.secondaryText = row.subtitle
+        content.secondaryTextProperties.color = .secondaryLabel
+        cell.contentConfiguration = content
+        var bg = UIBackgroundConfiguration.listPlainCell()
+        bg.backgroundColor = .systemBackground
+        cell.backgroundConfiguration = bg
+        cell.accessoryType = .disclosureIndicator
+        return cell
+    }
+
+    override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        tableView.deselectRow(at: indexPath, animated: true)
+        let id = rows[indexPath.row].id
+        interactor.selectAnnouncement(AnnouncementsChromeListModel.SelectAnnouncement.Request(id: id))
+    }
+
+    override func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
+        let id = rows[indexPath.row].id
+        let delete = UIContextualAction(style: .destructive, title: "Удалить") { [weak self] _, _, done in
+            self?.interactor.deleteAnnouncement(AnnouncementsChromeListModel.DeleteAnnouncement.Request(id: id))
+            done(true)
+        }
+        return UISwipeActionsConfiguration(actions: [delete])
+    }
+}
+
+// MARK: - UISearchBarDelegate
+
+extension AnnouncementsChromeListViewController: UISearchBarDelegate {
 
     func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
-        query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        applyFilter()
+        interactor.updateSearchQuery(AnnouncementsChromeListModel.UpdateSearchQuery.Request(query: searchText))
     }
 
     func searchBarTextDidBeginEditing(_ searchBar: UISearchBar) {
@@ -325,53 +327,25 @@ class AnnouncementsChromeListTableViewController: UITableViewController, UISearc
 
     private func dismissSearchKeyboardAndClear() {
         chromeHeader.searchBar.text = ""
-        query = ""
         chromeHeader.searchBar.searchTextField.resignFirstResponder()
         chromeHeader.setShowsSearchDismiss(false, animated: true)
-        applyFilter()
+        interactor.updateSearchQuery(AnnouncementsChromeListModel.UpdateSearchQuery.Request(query: ""))
     }
+}
 
-    override func numberOfSections(in tableView: UITableView) -> Int { 1 }
+// MARK: - AnnouncementsChromeListDisplayLogic
 
-    override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        filtered.count
+extension AnnouncementsChromeListViewController: AnnouncementsChromeListDisplayLogic {
+    func displayAnnouncements(_ viewModel: AnnouncementsChromeListModel.AnnouncementsChanged.ViewModel) {
+        rows = viewModel.rows
+        tableView.reloadData()
     }
+}
 
-    override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: "cell", for: indexPath)
-        let a = filtered[indexPath.row]
-        var content = cell.defaultContentConfiguration()
-        content.text = a.title
-        content.secondaryText = Self.formatDate(a.date)
-        content.secondaryTextProperties.color = .secondaryLabel
-        cell.contentConfiguration = content
-        var bg = UIBackgroundConfiguration.listPlainCell()
-        bg.backgroundColor = .systemBackground
-        cell.backgroundConfiguration = bg
-        cell.accessoryType = .disclosureIndicator
-        return cell
-    }
+// MARK: - AnnouncementsChromeListRoutingLogic
 
-    override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
-        tableView.deselectRow(at: indexPath, animated: true)
-        let a = filtered[indexPath.row]
-        navigationController?.pushViewController(SavedAnnouncementDetailViewController(announcement: a), animated: true)
-    }
-
-    override func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
-        let a = filtered[indexPath.row]
-        let delete = UIContextualAction(style: .destructive, title: "Удалить") { [weak self] _, _, done in
-            self?.store.deleteSavedAnnouncement(id: a.id)
-            done(true)
-        }
-        return UISwipeActionsConfiguration(actions: [delete])
-    }
-
-    private static func formatDate(_ date: Date) -> String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "ru_RU")
-        f.dateStyle = .medium
-        f.timeStyle = .short
-        return f.string(from: date)
+extension AnnouncementsChromeListViewController: AnnouncementsChromeListRoutingLogic {
+    func routeToDetail(_ announcement: SavedAnnouncement) {
+        navigationController?.pushViewController(SavedAnnouncementDetailBuilder.build(announcement: announcement), animated: true)
     }
 }

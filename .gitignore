@@ -7,3 +7,5 @@
 # Xcode user data
 *.xcworkspace/
 *.xcuserdata/
+*.derivedData/
+*.HomeModule/
