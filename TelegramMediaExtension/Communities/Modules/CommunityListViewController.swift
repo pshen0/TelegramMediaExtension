@@ -1,10 +1,74 @@
 import Combine
 import UIKit
 
-final class CommunityListViewController: UITableViewController {
+final class CommunityListViewController: UITableViewController, UISearchResultsUpdating {
     private let store = CommunityStore.shared
     private var cancellables = Set<AnyCancellable>()
     private var bannerColorObserver: NSObjectProtocol?
+
+    private lazy var communitySearchController: UISearchController = {
+        let sc = UISearchController(searchResultsController: nil)
+        sc.searchResultsUpdater = self
+        sc.obscuresBackgroundDuringPresentation = false
+        sc.searchBar.placeholder = "Поиск"
+        sc.searchBar.autocapitalizationType = .none
+        sc.searchBar.autocorrectionType = .yes
+        return sc
+    }()
+
+    /// Всегда выбран «Сообщества»; выбор другой вкладки сразу откатывается на «Сообщества».
+    private let feedSegmentControl: UISegmentedControl = {
+        let s = UISegmentedControl(items: ["Все", "Сообщества", "Новые", "Каналы"])
+        s.selectedSegmentIndex = 1
+        return s
+    }()
+
+    private let segmentScrollView: UIScrollView = {
+        let sv = UIScrollView()
+        sv.showsHorizontalScrollIndicator = false
+        sv.alwaysBounceHorizontal = true
+        sv.alwaysBounceVertical = false
+        sv.backgroundColor = .clear
+        sv.clipsToBounds = true
+        return sv
+    }()
+
+    /// Отступы: меньше до поиска сверху и до списка чатов снизу; высота дорожки сегмента.
+    private enum FeedSegmentMetrics {
+        static let controlHeight: CGFloat = 40
+        static let topInset: CGFloat = 4
+        static let bottomInset: CGFloat = 4
+        /// Доп. ширина сегмента кроме текста — больше «воздуха» у плашки выбора от краёв подписи.
+        static let segmentInnerHorizontalPadding: CGFloat = 36
+        static var headerHeight: CGFloat { topInset + controlHeight + bottomInset }
+    }
+
+    private lazy var segmentTableHeaderView: UIView = {
+        let v = UIView()
+        v.backgroundColor = .systemGroupedBackground
+        segmentScrollView.translatesAutoresizingMaskIntoConstraints = false
+        feedSegmentControl.translatesAutoresizingMaskIntoConstraints = false
+        v.addSubview(segmentScrollView)
+        segmentScrollView.addSubview(feedSegmentControl)
+        NSLayoutConstraint.activate([
+            segmentScrollView.topAnchor.constraint(equalTo: v.topAnchor, constant: FeedSegmentMetrics.topInset),
+            segmentScrollView.bottomAnchor.constraint(equalTo: v.bottomAnchor, constant: -FeedSegmentMetrics.bottomInset),
+            segmentScrollView.heightAnchor.constraint(equalToConstant: FeedSegmentMetrics.controlHeight),
+
+            feedSegmentControl.topAnchor.constraint(equalTo: segmentScrollView.contentLayoutGuide.topAnchor),
+            feedSegmentControl.bottomAnchor.constraint(equalTo: segmentScrollView.contentLayoutGuide.bottomAnchor),
+            feedSegmentControl.leadingAnchor.constraint(equalTo: segmentScrollView.contentLayoutGuide.leadingAnchor),
+            feedSegmentControl.trailingAnchor.constraint(equalTo: segmentScrollView.contentLayoutGuide.trailingAnchor),
+            feedSegmentControl.heightAnchor.constraint(equalToConstant: FeedSegmentMetrics.controlHeight),
+        ])
+        feedSegmentControl.addTarget(self, action: #selector(feedSegmentLocked), for: .valueChanged)
+        return v
+    }()
+
+    /// Горизонталь совпадает с контентной областью таблицы (как у строк и типичной поисковой строки под навбаром).
+    private var segmentScrollHorizontalConstraints: [NSLayoutConstraint] = []
+
+    private var lastLaidOutSegmentContainerWidth: CGFloat = 0
 
     init() {
         super.init(style: .plain)
@@ -15,12 +79,17 @@ final class CommunityListViewController: UITableViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         navigationItem.largeTitleDisplayMode = .never
-        navigationItem.title = "Сообщества"
+        navigationItem.title = "Чаты"
+        definesPresentationContext = true
+        navigationItem.searchController = communitySearchController
+        navigationItem.hidesSearchBarWhenScrolling = false
         view.backgroundColor = .systemGroupedBackground
         tableView.backgroundColor = .systemGroupedBackground
         tableView.separatorColor = TMETheme.TableView.separatorColor
         tableView.separatorInset = TMETheme.TableView.separatorInset
         tableView.tableFooterView = UIView()
+        tableView.tableHeaderView = segmentTableHeaderView
+        pinSegmentScrollHorizontalToTableContent()
 
         tableView.register(CommunityListCell.self, forCellReuseIdentifier: CommunityListCell.reuseId)
 
@@ -36,6 +105,124 @@ final class CommunityListViewController: UITableViewController {
 
         store.loadIfNeeded()
         bind()
+        applyFeedSegmentAppearance()
+    }
+
+    private func pinSegmentScrollHorizontalToTableContent() {
+        NSLayoutConstraint.deactivate(segmentScrollHorizontalConstraints)
+        /// Горизонталь совпадает с безопасной областью таблицы — как проектная ширина поисковой строки под навбаром.
+        let pair = [
+            segmentScrollView.leadingAnchor.constraint(equalTo: tableView.safeAreaLayoutGuide.leadingAnchor, constant: 15),
+            segmentScrollView.trailingAnchor.constraint(equalTo: tableView.safeAreaLayoutGuide.trailingAnchor, constant: -15),
+        ]
+        segmentScrollHorizontalConstraints = pair
+        NSLayoutConstraint.activate(pair)
+    }
+
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        applyFeedSegmentAppearance()
+    }
+
+    /// 13 pt; подписи не режем — ширины сегментов считаются по тексту + запас; при необходимости горизонтальный скролл.
+    private func applyFeedSegmentAppearance() {
+        let font = UIFont.systemFont(ofSize: 13, weight: .semibold)
+        let primary = UIColor.label
+        let segmentAttrs: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: primary,
+        ]
+        feedSegmentControl.setTitleTextAttributes(segmentAttrs, for: .normal)
+        feedSegmentControl.setTitleTextAttributes(segmentAttrs, for: .selected)
+        feedSegmentControl.selectedSegmentTintColor = UIColor { tc in
+            tc.userInterfaceStyle == .dark
+                ? UIColor.white.withAlphaComponent(0.11)
+                : UIColor.black.withAlphaComponent(0.07)
+        }
+        if #available(iOS 13.0, *) {
+            feedSegmentControl.apportionsSegmentWidthsByContent = false
+        }
+        lastLaidOutSegmentContainerWidth = 0
+        layoutFeedSegmentWidthsIfNeeded()
+    }
+
+    /// Растягивает вкладки на ширину контейнера (как один ряд с поиском); если сумма минимальных ширин больше — горизонтальный скролл.
+    private func layoutFeedSegmentWidthsIfNeeded() {
+        let w = segmentScrollView.bounds.width
+        guard w > 1 else { return }
+        guard abs(w - lastLaidOutSegmentContainerWidth) > 0.5 else { return }
+        lastLaidOutSegmentContainerWidth = w
+        let font = UIFont.systemFont(ofSize: 13, weight: .semibold)
+        applyFeedSegmentWidths(font: font, containerWidth: w)
+    }
+
+    private func applyFeedSegmentWidths(font: UIFont, containerWidth: CGFloat) {
+        let pad = FeedSegmentMetrics.segmentInnerHorizontalPadding
+        let n = feedSegmentControl.numberOfSegments
+        guard n > 0 else { return }
+
+        var baseWidths: [CGFloat] = []
+        for i in 0..<n {
+            let title = feedSegmentControl.titleForSegment(at: i) ?? ""
+            let textW = ceil((title as NSString).size(withAttributes: [.font: font]).width)
+            baseWidths.append(max(textW + pad, 52))
+        }
+        let sumBase = baseWidths.reduce(0, +)
+
+        if containerWidth >= sumBase {
+            let extraPer = (containerWidth - sumBase) / CGFloat(n)
+            for i in 0..<n {
+                feedSegmentControl.setWidth(baseWidths[i] + extraPer, forSegmentAt: i)
+            }
+        } else {
+            for i in 0..<n {
+                feedSegmentControl.setWidth(baseWidths[i], forSegmentAt: i)
+            }
+        }
+
+        segmentTableHeaderView.setNeedsLayout()
+        segmentTableHeaderView.layoutIfNeeded()
+        feedSegmentControl.invalidateIntrinsicContentSize()
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        layoutFeedSegmentWidthsIfNeeded()
+        resizeSegmentTableHeaderIfNeeded()
+    }
+
+    private func resizeSegmentTableHeaderIfNeeded() {
+        guard tableView.tableHeaderView === segmentTableHeaderView else { return }
+        let width = tableView.bounds.width
+        guard width > 0 else { return }
+        let height = FeedSegmentMetrics.headerHeight
+        let header = segmentTableHeaderView
+        if abs(header.frame.width - width) > 0.5 || abs(header.frame.height - height) > 0.5 {
+            header.frame = CGRect(x: 0, y: 0, width: width, height: height)
+            tableView.tableHeaderView = header
+        }
+    }
+
+    @objc private func feedSegmentLocked(_ sender: UISegmentedControl) {
+        guard sender.selectedSegmentIndex != 1 else { return }
+        sender.selectedSegmentIndex = 1
+    }
+
+    func updateSearchResults(for searchController: UISearchController) {
+        tableView.reloadData()
+    }
+
+    private func displayedCommunities() -> [CommunityChat] {
+        let trimmed = communitySearchController.searchBar.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !trimmed.isEmpty else {
+            return store.communities
+        }
+        let q = trimmed.lowercased()
+        return store.communities.filter { c in
+            if c.title.lowercased().contains(q) { return true }
+            let preview = store.listPreviewText(for: c.id)
+            return preview.lowercased().contains(q)
+        }
     }
 
     deinit {
@@ -78,7 +265,7 @@ final class CommunityListViewController: UITableViewController {
     override func numberOfSections(in tableView: UITableView) -> Int { 1 }
 
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        store.communities.count
+        displayedCommunities().count
     }
 
     override func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
@@ -87,7 +274,7 @@ final class CommunityListViewController: UITableViewController {
 
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: CommunityListCell.reuseId, for: indexPath) as! CommunityListCell
-        let c = store.communities[indexPath.row]
+        let c = displayedCommunities()[indexPath.row]
         let preview = store.listPreviewText(for: c.id)
         let last = store.lastMessage(for: c.id)
         let timeText = last.map { Self.formatListTime($0.createdAt) } ?? ""
@@ -97,12 +284,12 @@ final class CommunityListViewController: UITableViewController {
 
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
-        let c = store.communities[indexPath.row]
+        let c = displayedCommunities()[indexPath.row]
         navigationController?.pushViewController(CommunityChatViewController(communityId: c.id), animated: true)
     }
 
     override func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
-        let c = store.communities[indexPath.row]
+        let c = displayedCommunities()[indexPath.row]
         let delete = UIContextualAction(style: .destructive, title: "Удалить") { [weak self] _, _, done in
             self?.store.deleteCommunity(id: c.id)
             done(true)

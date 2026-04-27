@@ -1,6 +1,6 @@
 import UIKit
 
-/// Шапка: компактная цветная полоса + продолжение цвета вверх при bounce, поиск с узкой строкой и круглой кнопкой закрытия справа (как система).
+/// Шапка: цветная полоса + системная строка поиска (`UISearchBar`) и кнопка закрытия клавиатуры справа при фокусе.
 final class MediaLibraryChromeHeaderView: UIView {
     enum BannerImage: Equatable {
         case duck1
@@ -151,7 +151,7 @@ final class MediaLibraryChromeHeaderView: UIView {
         max(640, UIScreen.main.bounds.height * 0.9)
     }
 
-    private static let searchMinHeight: CGFloat = 36
+    private static let searchMinHeight: CGFloat = 44
     private static let searchTopSpacing: CGFloat = 2
     private static let searchToTabsSpacing: CGFloat = 4
     private static let tabsCardVerticalPadding: CGFloat = 6
@@ -211,12 +211,10 @@ final class MediaLibraryChromeHeaderView: UIView {
         applyBannerImage()
 
         searchBar.placeholder = "Поиск"
-        searchBar.searchBarStyle = .minimal
-        searchBar.backgroundColor = .clear
-        searchBar.barTintColor = .clear
-        searchBar.isTranslucent = false
         searchBar.setShowsCancelButton(false, animated: false)
-        configureSearchBarChrome()
+        searchBar.autocapitalizationType = .none
+        searchBar.autocorrectionType = .yes
+        applySystemSearchBarAppearance()
         addSubview(searchBar)
 
         searchDismissGlass.isUserInteractionEnabled = false
@@ -285,35 +283,14 @@ final class MediaLibraryChromeHeaderView: UIView {
         onSearchDismiss?()
     }
 
-    private func configureSearchBarChrome() {
-        guard #available(iOS 13.0, *) else { return }
-        let tf = searchBar.searchTextField
-        let fieldBg = UIColor { tc in
-            tc.userInterfaceStyle == .dark ? UIColor(white: 0.28, alpha: 1) : UIColor(white: 0.91, alpha: 1)
-        }
-        let textCol = UIColor { tc in
-            tc.userInterfaceStyle == .dark ? UIColor(white: 0.82, alpha: 1) : UIColor(white: 0.35, alpha: 1)
-        }
-        let hintCol = UIColor { tc in
-            tc.userInterfaceStyle == .dark ? UIColor(white: 0.55, alpha: 1) : UIColor(white: 0.48, alpha: 1)
-        }
-        tf.backgroundColor = fieldBg.resolvedColor(with: traitCollection)
-        tf.textColor = textCol.resolvedColor(with: tf.traitCollection)
-        tf.attributedPlaceholder = NSAttributedString(
-            string: searchBar.placeholder ?? "Поиск",
-            attributes: [.foregroundColor: hintCol.resolvedColor(with: tf.traitCollection)]
-        )
-        tf.layer.cornerRadius = Self.searchFieldCornerRadius
-        tf.clipsToBounds = true
-        tf.borderStyle = .none
-        tf.leftView?.tintColor = textCol.resolvedColor(with: tf.traitCollection)
-        if let lv = tf.leftView as? UIImageView {
-            lv.tintColor = textCol.resolvedColor(with: tf.traitCollection)
-        }
-        searchBar.searchTextField.backgroundColor = fieldBg.resolvedColor(with: traitCollection)
+    /// Стандартный вид отдельной `UISearchBar` в контенте (не `UISearchController` / не навбар): только акцентный tint.
+    private func applySystemSearchBarAppearance() {
+        searchBar.tintColor = TMETheme.Colors.accent
+        searchBar.searchBarStyle = .prominent
+        searchBar.barTintColor = nil
+        searchBar.backgroundColor = nil
+        searchBar.isTranslucent = true
     }
-
-    private static let searchFieldCornerRadius: CGFloat = 20
 
     override func layoutSubviews() {
         super.layoutSubviews()
@@ -329,7 +306,6 @@ final class MediaLibraryChromeHeaderView: UIView {
         layoutSearchRowAndTabs()
 
         updateTabsCardShadowPath()
-        tintSearchBarAccessoryViews()
     }
 
     private func layoutDuckInBanner(width w: CGFloat, bannerHeight gradientH: CGFloat) {
@@ -434,29 +410,13 @@ final class MediaLibraryChromeHeaderView: UIView {
         super.traitCollectionDidChange(previousTraitCollection)
         applyBannerBackgroundColor()
         tabsCardClipView.backgroundColor = cardBackgroundColor()
-        configureSearchBarChrome()
-        tintSearchBarAccessoryViews()
+        applySystemSearchBarAppearance()
         updateSearchDismissGlassEffect()
     }
 
     private func updateSearchDismissGlassEffect() {
         let style: UIBlurEffect.Style = traitCollection.userInterfaceStyle == .dark ? .systemThinMaterialDark : .systemThinMaterialLight
         searchDismissGlass.effect = UIBlurEffect(style: style)
-    }
-
-    private func tintSearchBarAccessoryViews() {
-        guard #available(iOS 13.0, *) else { return }
-        let tf = searchBar.searchTextField
-        let textCol = UIColor { tc in
-            tc.userInterfaceStyle == .dark ? UIColor(white: 0.82, alpha: 1) : UIColor(white: 0.35, alpha: 1)
-        }.resolvedColor(with: tf.traitCollection)
-        tf.leftView?.tintColor = textCol
-        tf.leftViewMode = .always
-        if let stack = tf.leftView as? UIStackView {
-            for v in stack.arrangedSubviews {
-                v.tintColor = textCol
-            }
-        }
     }
 
     private func updateTabsCardShadowPath() {

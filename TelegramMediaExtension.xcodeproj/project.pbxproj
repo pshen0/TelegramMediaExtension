@@ -11,10 +11,10 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		0FDE54E02F901F3C002152A5 /* Exceptions for "TelegramMediaExtension" folder in "TelegramMediaExtension" target */ = {
+		0F208F942FA0038200FB115F /* Exceptions for "TelegramMediaExtension" folder in "TelegramMediaExtension" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				Info.plist,
+				App/Resources/Info.plist,
 			);
 			target = 0FDE54CD2F901F37002152A5 /* TelegramMediaExtension */;
 		};
@@ -24,7 +24,7 @@
 		0FDE54D02F901F37002152A5 /* TelegramMediaExtension */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				0FDE54E02F901F3C002152A5 /* Exceptions for "TelegramMediaExtension" folder in "TelegramMediaExtension" target */,
+				0F208F942FA0038200FB115F /* Exceptions for "TelegramMediaExtension" folder in "TelegramMediaExtension" target */,
 			);
 			path = TelegramMediaExtension;
 			sourceTree = "<group>";
@@ -147,7 +147,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = D29HMVXL7B;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = TelegramMediaExtension/Info.plist;
+				INFOPLIST_FILE = TelegramMediaExtension/App/Resources/Info.plist;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				INFOPLIST_KEY_UIMainStoryboardFile = Main;
@@ -179,7 +179,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = D29HMVXL7B;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = TelegramMediaExtension/Info.plist;
+				INFOPLIST_FILE = TelegramMediaExtension/App/Resources/Info.plist;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				INFOPLIST_KEY_UIMainStoryboardFile = Main;
@@ -255,6 +255,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
+				INFOPLIST_FILE = "";
 				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
@@ -313,6 +314,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
+				INFOPLIST_FILE = "";
 				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = NO;
