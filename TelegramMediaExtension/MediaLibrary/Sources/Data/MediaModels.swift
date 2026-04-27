@@ -111,6 +111,9 @@ struct MediaItem: Identifiable, Equatable {
     var coverFileName: String?
     /// Идентификатор во внешнем каталоге, если объект добавлен из поиска.
     var catalogSourceID: String?
+    /// Персональная защита от спойлеров для этого объекта (используем только если `catalogSourceID` из TMDB).
+    /// `true` по умолчанию: чтобы новые TMDB-объекты сразу были «без спойлеров».
+    var spoilersProtectionEnabled: Bool
     /// `false` — запись из каталога; `true` — создана вручную.
     var isManuallyCreated: Bool
     var createdAt: Date
@@ -131,6 +134,7 @@ struct MediaItem: Identifiable, Equatable {
         synopsis: String? = nil,
         coverFileName: String? = nil,
         catalogSourceID: String? = nil,
+        spoilersProtectionEnabled: Bool = true,
         isManuallyCreated: Bool = true,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
@@ -149,6 +153,7 @@ struct MediaItem: Identifiable, Equatable {
         self.synopsis = synopsis
         self.coverFileName = coverFileName
         self.catalogSourceID = catalogSourceID
+        self.spoilersProtectionEnabled = spoilersProtectionEnabled
         self.isManuallyCreated = isManuallyCreated
         self.createdAt = createdAt
         self.updatedAt = updatedAt
@@ -160,6 +165,7 @@ extension MediaItem: Codable {
         case id, kind, title, status, progress, notes, hashtags
         case isFavorite
         case year, genre, rating, synopsis, coverFileName, catalogSourceID, isManuallyCreated
+        case spoilersProtectionEnabled
         case createdAt, updatedAt
     }
 
@@ -179,6 +185,7 @@ extension MediaItem: Codable {
         synopsis = try c.decodeIfPresent(String.self, forKey: .synopsis)
         coverFileName = try c.decodeIfPresent(String.self, forKey: .coverFileName)
         catalogSourceID = try c.decodeIfPresent(String.self, forKey: .catalogSourceID)
+        spoilersProtectionEnabled = try c.decodeIfPresent(Bool.self, forKey: .spoilersProtectionEnabled) ?? true
         isManuallyCreated = try c.decodeIfPresent(Bool.self, forKey: .isManuallyCreated) ?? true
         createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
         updatedAt = try c.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date()
@@ -200,6 +207,7 @@ extension MediaItem: Codable {
         try c.encodeIfPresent(synopsis, forKey: .synopsis)
         try c.encodeIfPresent(coverFileName, forKey: .coverFileName)
         try c.encodeIfPresent(catalogSourceID, forKey: .catalogSourceID)
+        try c.encode(spoilersProtectionEnabled, forKey: .spoilersProtectionEnabled)
         try c.encode(isManuallyCreated, forKey: .isManuallyCreated)
         try c.encode(createdAt, forKey: .createdAt)
         try c.encode(updatedAt, forKey: .updatedAt)

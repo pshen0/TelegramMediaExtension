@@ -3,6 +3,7 @@ import UIKit
 /// Вкладка «Поиск в базах»: строка поиска + результаты (заглушка API).
 final class MediaCatalogSearchViewController: UITableViewController, UISearchBarDelegate {
     weak var addFlowCoordinator: AddToMediaLibraryViewController?
+    var onSelectCandidate: ((MediaCatalogCandidate) -> Void)?
 
     private let searchBar = UISearchBar()
     private var results: [MediaCatalogCandidate] = []
@@ -51,6 +52,10 @@ final class MediaCatalogSearchViewController: UITableViewController, UISearchBar
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
         let c = results[indexPath.row]
+        if let onSelectCandidate {
+            onSelectCandidate(c)
+            return
+        }
         let preview = MediaCatalogPreviewViewController(candidate: c)
         preview.addFlowCoordinator = addFlowCoordinator
         navigationController?.pushViewController(preview, animated: true)

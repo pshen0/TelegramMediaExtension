@@ -2,6 +2,28 @@ import UIKit
 
 /// Шапка: компактная цветная полоса + продолжение цвета вверх при bounce, поиск с узкой строкой и круглой кнопкой закрытия справа (как система).
 final class MediaLibraryChromeHeaderView: UIView {
+    enum BannerImage: Equatable {
+        case duck1
+        case duck2
+        case none
+
+        fileprivate var assetName: String? {
+            switch self {
+            case .duck1: return "duck1"
+            case .duck2: return "duck2"
+            case .none: return nil
+            }
+        }
+    }
+
+    var bannerImage: BannerImage = .duck1 {
+        didSet {
+            guard bannerImage != oldValue else { return }
+            applyBannerImage()
+            setNeedsLayout()
+        }
+    }
+
     /// Тап по цветной полосе над поиском — выбор цвета шапки.
     var onBannerTap: (() -> Void)?
 
@@ -127,6 +149,21 @@ final class MediaLibraryChromeHeaderView: UIView {
         topSafeInset = inset
     }
 
+    private func applyBannerImage() {
+        guard let name = bannerImage.assetName, let img = UIImage(named: name) else {
+            duckImageView.image = nil
+            duckImageView.removeFromSuperview()
+            return
+        }
+        duckImageView.image = img
+        duckImageView.contentMode = .scaleAspectFit
+        duckImageView.isUserInteractionEnabled = false
+        duckImageView.accessibilityIgnoresInvertColors = true
+        if duckImageView.superview == nil {
+            addSubview(duckImageView)
+        }
+    }
+
     init() {
         let tabTitles = ["Все", "Избранное"] + MediaWatchStatus.allCases.map(\.title)
         folderTabs = MediaLibraryFolderTabsView(titles: tabTitles)
@@ -148,13 +185,7 @@ final class MediaLibraryChromeHeaderView: UIView {
         bannerSolidView.addGestureRecognizer(tap)
         addSubview(bannerSolidView)
 
-        if let duck = UIImage(named: "duck") {
-            duckImageView.image = duck
-            duckImageView.contentMode = .scaleAspectFit
-            duckImageView.isUserInteractionEnabled = false
-            duckImageView.accessibilityIgnoresInvertColors = true
-            addSubview(duckImageView)
-        }
+        applyBannerImage()
 
         searchBar.placeholder = "Поиск"
         searchBar.searchBarStyle = .minimal

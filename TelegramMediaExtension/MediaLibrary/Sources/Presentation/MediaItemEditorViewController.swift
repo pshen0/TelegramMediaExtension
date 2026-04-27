@@ -27,6 +27,7 @@ final class MediaItemEditorViewController: UITableViewController {
         case main
         case metadata
         case progress
+        case spoilers
         case notes
         case hashtags
         case delete
@@ -106,6 +107,10 @@ final class MediaItemEditorViewController: UITableViewController {
         case .progress:
             if item.kind == .series { return 3 }
             return 2
+        case .spoilers:
+            // Только для TMDB-объектов: `catalogSourceID` вида `tmdb-…`.
+            guard let id = item.catalogSourceID, id.hasPrefix("tmdb-") else { return 0 }
+            return 1
         case .notes: return 1
         case .hashtags: return 1
         case .delete:
@@ -124,6 +129,7 @@ final class MediaItemEditorViewController: UITableViewController {
         case .main: return nil
         case .metadata: return "Карточка"
         case .progress: return "Прогресс"
+        case .spoilers: return "Спойлеры"
         case .notes: return "Заметка / рецензия"
         case .hashtags: return "Хэштеги"
         case .delete: return nil
@@ -146,6 +152,8 @@ final class MediaItemEditorViewController: UITableViewController {
             return "Можно через запятую: #fantasy, books, reread"
         case .notes:
             return "До \(TMETextViewCell.defaultNotesMaxLength) символов."
+        case .spoilers:
+            return "Если включено — посты и комментарии в тематических сообществах по этому произведению будут скрываться до вашего прогресса."
         default:
             return nil
         }
@@ -232,6 +240,18 @@ final class MediaItemEditorViewController: UITableViewController {
                     self?.item.progress.total = v
                 }
             }
+        case .spoilers:
+            let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
+            cell.selectionStyle = .none
+            cell.textLabel?.text = "Защита от спойлеров"
+            let sw = UISwitch()
+            sw.isOn = item.spoilersProtectionEnabled
+            sw.addAction(UIAction { [weak self] _ in
+                guard let self else { return }
+                self.item.spoilersProtectionEnabled = sw.isOn
+            }, for: .valueChanged)
+            cell.accessoryView = sw
+            return cell
         case .notes:
             return makeTextViewCell(text: item.notes, placeholder: "Добавьте заметку или рецензию...") { [weak self] text in
                 self?.item.notes = text

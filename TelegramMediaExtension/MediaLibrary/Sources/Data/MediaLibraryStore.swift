@@ -46,6 +46,11 @@ final class MediaLibraryStore: ObservableObject {
         return items.first { $0.id == id }
     }
 
+    func item(catalogSourceID: String) -> MediaItem? {
+        loadIfNeeded()
+        return items.first { $0.catalogSourceID == catalogSourceID }
+    }
+
     func totalItemCount() -> Int {
         loadIfNeeded()
         return items.count
