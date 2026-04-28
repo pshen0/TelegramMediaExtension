@@ -542,7 +542,7 @@ final class CommunityChatViewController: UIViewController, UITableViewDataSource
             return
         }
 
-        let picker = MediaCatalogSearchViewController(style: .insetGrouped)
+        let picker = MediaCatalogSearchBuilder.build(style: .insetGrouped)
         picker.title = "Выберите произведение"
         picker.onSelectCandidate = { [weak self, weak picker] cand in
             guard let self else { return }

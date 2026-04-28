@@ -221,7 +221,7 @@ final class AnnouncementsChromeListViewController: UITableViewController {
     }
 
     private func presentBannerColorPicker() {
-        let picker = MediaLibraryBannerColorPickerViewController()
+        let picker = MediaLibraryBannerColorPickerBuilder.build()
         picker.onFinish = { [weak self] in
             self?.applyBannerChromeColors()
         }

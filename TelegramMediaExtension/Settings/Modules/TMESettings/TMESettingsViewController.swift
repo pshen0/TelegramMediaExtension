@@ -1,6 +1,7 @@
 import UIKit
 
 final class TMESettingsViewController: UIViewController {
+    private let interactor: TMESettingsBusinessLogic
     private let header = UIView()
     private let headerAvatar = UIImageView()
     private let headerName = UILabel()
@@ -9,6 +10,25 @@ final class TMESettingsViewController: UIViewController {
     private var headerQRButton: LiquidGlassBarButtonView?
 
     private let contentStack = UIStackView()
+    private var groups: [TMESettingsModel.Rows.Group] = []
+
+    init(interactor: TMESettingsBusinessLogic) {
+        self.interactor = interactor
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    convenience init() {
+        let presenter = TMESettingsPresenter()
+        let interactor = TMESettingsInteractor(presenter: presenter)
+        self.init(interactor: interactor)
+        presenter.view = self
+        interactor.router = self
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -19,6 +39,8 @@ final class TMESettingsViewController: UIViewController {
 
         buildHeader()
         buildContent()
+
+        interactor.viewDidLoad(.init())
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -40,10 +62,8 @@ final class TMESettingsViewController: UIViewController {
     }
 
     private func buildHeader() {
-        header.translatesAutoresizingMaskIntoConstraints = false
         header.backgroundColor = UIColor(red: 0.53, green: 0.42, blue: 0.77, alpha: 1)
 
-        headerAvatar.translatesAutoresizingMaskIntoConstraints = false
         headerAvatar.contentMode = .scaleAspectFill
         headerAvatar.clipsToBounds = true
         headerAvatar.layer.cornerRadius = 50
@@ -55,7 +75,6 @@ final class TMESettingsViewController: UIViewController {
         headerAvatar.tintColor = nil
         headerAvatar.backgroundColor = UIColor.white.withAlphaComponent(0.12)
 
-        headerName.translatesAutoresizingMaskIntoConstraints = false
         headerName.font = TMETheme.Fonts.titleSemibold(28)
         headerName.textColor = .white
         headerName.textAlignment = .center
@@ -64,7 +83,6 @@ final class TMESettingsViewController: UIViewController {
         headerName.adjustsFontSizeToFitWidth = true
         headerName.minimumScaleFactor = 0.75
 
-        headerMeta.translatesAutoresizingMaskIntoConstraints = false
         headerMeta.font = TMETheme.Fonts.body(16)
         headerMeta.textColor = UIColor.white.withAlphaComponent(0.78)
         headerMeta.textAlignment = .center
@@ -85,94 +103,59 @@ final class TMESettingsViewController: UIViewController {
         ) {}
         edit.updateBlurStyle(for: traitCollection)
         headerEditButton = edit
-        edit.translatesAutoresizingMaskIntoConstraints = false
         header.addSubview(edit)
 
         let qr = LiquidGlassBarButtonView(symbolName: "qrcode.viewfinder", accessibilityLabel: "Сканировать QR", symbolPointSize: 17, side: 42) {}
         qr.updateBlurStyle(for: traitCollection)
         qr.isUserInteractionEnabled = false
         headerQRButton = qr
-        qr.translatesAutoresizingMaskIntoConstraints = false
         header.addSubview(qr)
 
         view.addSubview(header)
 
-        NSLayoutConstraint.activate([
-            header.topAnchor.constraint(equalTo: view.topAnchor),
-            header.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            header.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            header.heightAnchor.constraint(equalToConstant: 276),
+        header.pinTop(to: view.topAnchor)
+        header.pinLeft(to: view)
+        header.pinRight(to: view)
+        header.setHeight(276)
 
-            edit.trailingAnchor.constraint(equalTo: header.trailingAnchor, constant: -16),
-            edit.topAnchor.constraint(equalTo: header.safeAreaLayoutGuide.topAnchor, constant: 10),
-            edit.widthAnchor.constraint(equalToConstant: 72),
-            edit.heightAnchor.constraint(equalToConstant: 42),
+        edit.pinTop(to: header.safeAreaLayoutGuide.topAnchor, 10)
+        edit.pinRight(to: header.trailingAnchor, 16)
+        edit.setWidth(72)
+        edit.setHeight(42)
 
-            qr.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: 16),
-            qr.topAnchor.constraint(equalTo: header.safeAreaLayoutGuide.topAnchor, constant: 10),
-            qr.widthAnchor.constraint(equalToConstant: 42),
-            qr.heightAnchor.constraint(equalToConstant: 42),
+        qr.pinTop(to: header.safeAreaLayoutGuide.topAnchor, 10)
+        qr.pinLeft(to: header.leadingAnchor, 16)
+        qr.setWidth(42)
+        qr.setHeight(42)
 
-            headerAvatar.centerXAnchor.constraint(equalTo: header.centerXAnchor),
-            headerAvatar.topAnchor.constraint(equalTo: header.safeAreaLayoutGuide.topAnchor, constant: 10),
-            headerAvatar.widthAnchor.constraint(equalToConstant: 100),
-            headerAvatar.heightAnchor.constraint(equalToConstant: 100),
+        headerAvatar.pinTop(to: header.safeAreaLayoutGuide.topAnchor, 10)
+        headerAvatar.pinCenterX(to: header.centerXAnchor)
+        headerAvatar.setWidth(100)
+        headerAvatar.setHeight(100)
 
-            headerName.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: 16),
-            headerName.trailingAnchor.constraint(equalTo: header.trailingAnchor, constant: -16),
-            headerName.topAnchor.constraint(equalTo: headerAvatar.bottomAnchor, constant: 14),
+        headerName.pinTop(to: headerAvatar.bottomAnchor, 14)
+        headerName.pinLeft(to: header.leadingAnchor, 16)
+        headerName.pinRight(to: header.trailingAnchor, 16)
 
-            headerMeta.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: 16),
-            headerMeta.trailingAnchor.constraint(equalTo: header.trailingAnchor, constant: -16),
-            headerMeta.topAnchor.constraint(equalTo: headerName.bottomAnchor, constant: 6),
-            headerMeta.bottomAnchor.constraint(lessThanOrEqualTo: header.bottomAnchor, constant: -14)
-        ])
+        headerMeta.pinTop(to: headerName.bottomAnchor, 6)
+        headerMeta.pinLeft(to: header.leadingAnchor, 16)
+        headerMeta.pinRight(to: header.trailingAnchor, 16)
+        headerMeta.pinBottom(to: header.bottomAnchor, 14, .lsOE)
     }
 
     private func buildContent() {
-        contentStack.translatesAutoresizingMaskIntoConstraints = false
         contentStack.axis = .vertical
         contentStack.spacing = 20
 
-        let block1 = makePillGroup(rows: [
-            makeStaticRow(icon: "face.smiling", title: "Сменить эмодзи-статус", iconScale: 0.85),
-            makeStaticRow(icon: "paintpalette", title: "Изменить цвет профиля"),
-            makeStaticRow(icon: "camera", title: "Изменить фотографию")
-        ])
-
-        let myProfileGroup = makePillGroup(rows: [
-            makeStaticRow(icon: "profile", title: "Мой профиль", showsChevron: true)
-        ])
-
-        let libraryGroup = makePillGroup(rows: [
-            makeNavigationRow(icon: "media", title: "Медиатека") { [weak self] in
-                self?.navigationController?.pushViewController(MediaLibraryBuilder.build(), animated: true)
-            },
-            makeNavigationRow(icon: "anounce", title: "Мои анонсы") { [weak self] in
-                self?.navigationController?.pushViewController(AnnouncementsBuilder.build(), animated: true)
-            }
-        ])
-
-        let backendGroup = makePillGroup(rows: [
-            makeNavigationRow(icon: "network", title: "Backend URL", detail: BackendAuthStore.shared.baseURL.absoluteString) { [weak self] in
-                self?.presentBackendURLPrompt()
-            }
-        ])
-
-        [block1, myProfileGroup, libraryGroup, backendGroup].forEach { contentStack.addArrangedSubview($0) }
-
         view.addSubview(contentStack)
-        NSLayoutConstraint.activate([
-            contentStack.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 22),
-            contentStack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            contentStack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-            contentStack.bottomAnchor.constraint(lessThanOrEqualTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -16)
-        ])
+        contentStack.pinTop(to: header.bottomAnchor, 22)
+        contentStack.pinLeft(to: view.leadingAnchor, 16)
+        contentStack.pinRight(to: view.trailingAnchor, 16)
+        contentStack.pinBottom(to: view.safeAreaLayoutGuide.bottomAnchor, 16, .lsOE)
     }
 
     private func makePillGroup(rows: [UIView]) -> UIView {
         let clip = UIView()
-        clip.translatesAutoresizingMaskIntoConstraints = false
         clip.backgroundColor = UIColor { tc in
             tc.userInterfaceStyle == .dark ? UIColor(white: 0.12, alpha: 1) : UIColor(white: 0.96, alpha: 1)
         }
@@ -181,50 +164,15 @@ final class TMESettingsViewController: UIViewController {
         clip.clipsToBounds = true
 
         let stack = UIStackView(arrangedSubviews: rows)
-        stack.translatesAutoresizingMaskIntoConstraints = false
         stack.axis = .vertical
         stack.spacing = 0
         clip.addSubview(stack)
 
-        NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: clip.topAnchor),
-            stack.leadingAnchor.constraint(equalTo: clip.leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: clip.trailingAnchor),
-            stack.bottomAnchor.constraint(equalTo: clip.bottomAnchor)
-        ])
+        stack.pin(to: clip)
         return clip
     }
 
-    private func makeStaticRow(icon: String, title: String, showsChevron: Bool = false, iconScale: CGFloat? = nil) -> UIView {
-        let row = SettingsRowView()
-        row.configure(icon: UIImage(named: icon) ?? UIImage(systemName: icon), iconText: nil, title: title, detail: nil, showsChevron: showsChevron)
-        if let iconScale {
-            row.iconScale = iconScale
-        }
-        row.onTap = nil
-        return row
-    }
-
-    private func makeStaticRow(iconText: String, title: String) -> UIView {
-        let row = SettingsRowView()
-        row.configure(icon: nil, iconText: iconText, title: title, detail: nil, showsChevron: false)
-        row.onTap = nil
-        return row
-    }
-
-    private func makeNavigationRow(icon: String, title: String, onTap: @escaping () -> Void) -> UIView {
-        let row = SettingsRowView()
-        row.configure(icon: UIImage(named: icon) ?? UIImage(systemName: icon), iconText: nil, title: title, detail: nil, showsChevron: true)
-        row.onTap = onTap
-        return row
-    }
-
-    private func makeNavigationRow(icon: String, title: String, detail: String?, onTap: @escaping () -> Void) -> UIView {
-        let row = SettingsRowView()
-        row.configure(icon: UIImage(named: icon) ?? UIImage(systemName: icon), iconText: nil, title: title, detail: detail, showsChevron: true)
-        row.onTap = onTap
-        return row
-    }
+    // Rows are now driven by SVIP viewModel.
 
     private func presentBackendURLPrompt() {
         let current = BackendAuthStore.shared.baseURL.absoluteString
@@ -273,36 +221,28 @@ private final class SettingsRowView: UIControl {
     override init(frame: CGRect) {
         super.init(frame: frame)
 
-        translatesAutoresizingMaskIntoConstraints = false
         backgroundColor = .clear
 
-        iconHolder.translatesAutoresizingMaskIntoConstraints = false
         // Без серых квадратов под иконками — как в Telegram.
         iconHolder.backgroundColor = .clear
 
-        iconImage.translatesAutoresizingMaskIntoConstraints = false
         iconImage.contentMode = .scaleAspectFit
         iconImage.tintColor = TMETheme.Colors.accent
 
-        iconText.translatesAutoresizingMaskIntoConstraints = false
         iconText.font = TMETheme.Fonts.titleSemibold(14)
         iconText.textColor = TMETheme.Colors.accent
         iconText.textAlignment = .center
 
-        titleLabel.translatesAutoresizingMaskIntoConstraints = false
         titleLabel.font = TMETheme.Fonts.body(17)
         titleLabel.textColor = .label
 
-        detailLabel.translatesAutoresizingMaskIntoConstraints = false
         detailLabel.font = TMETheme.Fonts.body(15)
         detailLabel.textColor = .secondaryLabel
         detailLabel.textAlignment = .right
         detailLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
 
-        chevron.translatesAutoresizingMaskIntoConstraints = false
         chevron.tintColor = .tertiaryLabel
 
-        divider.translatesAutoresizingMaskIntoConstraints = false
         divider.backgroundColor = UIColor.separator.withAlphaComponent(0.35)
 
         addSubview(iconHolder)
@@ -313,38 +253,35 @@ private final class SettingsRowView: UIControl {
         addSubview(chevron)
         addSubview(divider)
 
-        NSLayoutConstraint.activate([
-            heightAnchor.constraint(equalToConstant: 54),
+        setHeight(56)
 
-            iconHolder.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
-            iconHolder.centerYAnchor.constraint(equalTo: centerYAnchor),
-            iconHolder.widthAnchor.constraint(equalToConstant: 34),
-            iconHolder.heightAnchor.constraint(equalToConstant: 34),
+        iconHolder.pinLeft(to: leadingAnchor, 14)
+        iconHolder.pinCenterY(to: centerYAnchor)
+        iconHolder.setWidth(38)
+        iconHolder.setHeight(38)
 
-            iconImage.centerXAnchor.constraint(equalTo: iconHolder.centerXAnchor),
-            iconImage.centerYAnchor.constraint(equalTo: iconHolder.centerYAnchor),
-            iconImage.widthAnchor.constraint(equalToConstant: 24),
-            iconImage.heightAnchor.constraint(equalToConstant: 24),
+        iconImage.pinCenterX(to: iconHolder.centerXAnchor)
+        iconImage.pinCenterY(to: iconHolder.centerYAnchor)
+        iconImage.setWidth(28)
+        iconImage.setHeight(28)
 
-            iconText.centerXAnchor.constraint(equalTo: iconHolder.centerXAnchor),
-            iconText.centerYAnchor.constraint(equalTo: iconHolder.centerYAnchor),
+        iconText.pinCenterX(to: iconHolder.centerXAnchor)
+        iconText.pinCenterY(to: iconHolder.centerYAnchor)
 
-            chevron.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
-            chevron.centerYAnchor.constraint(equalTo: centerYAnchor),
+        chevron.pinRight(to: trailingAnchor, 14)
+        chevron.pinCenterY(to: centerYAnchor)
 
-            detailLabel.trailingAnchor.constraint(equalTo: chevron.leadingAnchor, constant: -8),
-            detailLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
-            detailLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 0),
+        detailLabel.pinRight(to: chevron.leadingAnchor, 8)
+        detailLabel.pinCenterY(to: centerYAnchor)
 
-            titleLabel.leadingAnchor.constraint(equalTo: iconHolder.trailingAnchor, constant: 12),
-            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: detailLabel.leadingAnchor, constant: -8),
-            titleLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+        titleLabel.pinLeft(to: iconHolder.trailingAnchor, 12)
+        titleLabel.pinRight(to: detailLabel.leadingAnchor, 8, .lsOE)
+        titleLabel.pinCenterY(to: centerYAnchor)
 
-            divider.leadingAnchor.constraint(equalTo: titleLabel.leadingAnchor),
-            divider.trailingAnchor.constraint(equalTo: trailingAnchor),
-            divider.bottomAnchor.constraint(equalTo: bottomAnchor),
-            divider.heightAnchor.constraint(equalToConstant: 1.0 / UIScreen.main.scale)
-        ])
+        divider.pinLeft(to: titleLabel.leadingAnchor)
+        divider.pinRight(to: trailingAnchor)
+        divider.pinBottom(to: bottomAnchor)
+        divider.setHeight(Double(1.0 / UIScreen.main.scale))
 
         addTarget(self, action: #selector(tapped), for: .touchUpInside)
     }
@@ -388,6 +325,52 @@ private final class SettingsRowView: UIControl {
 
     @objc private func tapped() {
         onTap?()
+    }
+}
+
+// MARK: - SVIP
+
+extension TMESettingsViewController: TMESettingsDisplayLogic {
+    func displayRows(_ viewModel: TMESettingsModel.Rows.ViewModel) {
+        groups = viewModel.groups
+        contentStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+
+        for group in groups {
+            let rows: [UIView] = group.rows.map { r in
+                let row = SettingsRowView()
+                row.configure(
+                    icon: UIImage(named: r.iconName) ?? UIImage(systemName: r.iconName),
+                    iconText: nil,
+                    title: r.title,
+                    detail: r.detail,
+                    showsChevron: r.showsChevron
+                )
+                if let s = r.iconScale {
+                    row.iconScale = s
+                }
+                if let action = r.action {
+                    row.onTap = { [weak self] in self?.interactor.didSelectAction(action) }
+                } else {
+                    row.onTap = nil
+                }
+                return row
+            }
+            contentStack.addArrangedSubview(makePillGroup(rows: rows))
+        }
+    }
+}
+
+extension TMESettingsViewController: TMESettingsRoutingLogic {
+    func routeToMediaLibrary() {
+        navigationController?.pushViewController(MediaLibraryBuilder.build(), animated: true)
+    }
+
+    func routeToAnnouncements() {
+        navigationController?.pushViewController(AnnouncementsBuilder.build(), animated: true)
+    }
+
+    func routeToBackendURLPrompt() {
+        presentBackendURLPrompt()
     }
 }
 
