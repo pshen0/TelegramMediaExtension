@@ -1,6 +1,6 @@
 import Foundation
 
-/// Request / Response / ViewModel для экрана чата сообщества (SVIP).
+//MARK: - Request / Response / ViewModel для экрана чата сообщества (SVIP).
 enum CommunityChatModel {
 
     enum ViewDidLoad {
@@ -42,7 +42,6 @@ enum CommunityChatModel {
         }
     }
 
-    /// Решение об оверлее спойлера для ячейки (логика прогресса медиатеки).
     struct SpoilerDecision: Equatable {
         let title: String
         let subtitle: String

@@ -1,6 +1,5 @@
 import UIKit
 
-/// Два горизонтальных ряда по 8 круглых образцов; палитра по центру между заголовком и нижним краем.
 final class MediaLibraryBannerColorPickerViewController: UIViewController {
     var onFinish: (() -> Void)?
     private let interactor: MediaLibraryBannerColorPickerBusinessLogic
@@ -151,7 +150,6 @@ final class MediaLibraryBannerColorPickerViewController: UIViewController {
 
 extension MediaLibraryBannerColorPickerViewController: MediaLibraryBannerColorPickerDisplayLogic {
     func displayPalette(_ viewModel: MediaLibraryBannerColorPickerModel.Palette.ViewModel) {
-        // Палитра статическая, рендерится в viewDidLoad. Метод оставлен для SVIP-формы.
         _ = viewModel
     }
 }

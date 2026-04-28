@@ -82,7 +82,6 @@ final class CommunityListInteractor: CommunityListBusinessLogic {
             guard let self else { return }
             do {
                 let found = try await backend.searchCommunities(query: trimmed, limit: 20)
-                // Show only those not already in my list.
                 let myIds = Set(store.communities.map(\.id))
                 self.discoverResults = found.filter { !myIds.contains($0.id) }
             } catch {
@@ -122,7 +121,7 @@ final class CommunityListInteractor: CommunityListBusinessLogic {
                         self.router?.routeToChat(communityId: id)
                     }
                 } catch {
-                    // ignore
+                    //
                 }
             }
         }

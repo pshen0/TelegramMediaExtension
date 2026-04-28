@@ -63,7 +63,6 @@ final class SpoilerParticlesView: UIView {
             ctx.cgContext.setFillColor(UIColor.white.cgColor)
             ctx.cgContext.addEllipse(in: CGRect(x: 0, y: 0, width: side, height: side))
             ctx.cgContext.fillPath()
-            // мягкое свечение
             ctx.cgContext.setShadow(offset: .zero, blur: 3, color: UIColor.white.withAlphaComponent(0.6).cgColor)
             ctx.cgContext.addEllipse(in: CGRect(x: r - 1, y: r - 1, width: 2, height: 2))
             ctx.cgContext.fillPath()

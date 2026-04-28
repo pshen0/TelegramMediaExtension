@@ -89,7 +89,6 @@ final class NewAnnouncementInteractor: NewAnnouncementBusinessLogic {
                     self.imageFileName = remoteName
                     self.presenter.notifyFormDidChange()
                 } catch {
-                    // fallback: local only
                     do {
                         self.imageFileName = try store.saveAnnouncementImageJPEG(request.jpegData)
                         self.presenter.notifyFormDidChange()

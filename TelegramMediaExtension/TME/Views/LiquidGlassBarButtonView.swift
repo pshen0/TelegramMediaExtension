@@ -1,6 +1,5 @@
 import UIKit
 
-/// Круглая кнопка с тонким материалом для `navigationItem` (как на карточке медиатеки).
 final class LiquidGlassBarButtonView: UIView {
     private static let defaultSide: CGFloat = 34
     private let blur = UIVisualEffectView(effect: UIBlurEffect(style: .systemThinMaterialLight))

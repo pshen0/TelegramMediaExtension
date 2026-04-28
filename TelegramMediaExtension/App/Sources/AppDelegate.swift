@@ -1,10 +1,3 @@
-//
-//  AppDelegate.swift
-//  TelegramMediaExtension
-//
-//  Created by Анна Сазонова on 15.04.2026.
-//
-
 import UIKit
 
 @main

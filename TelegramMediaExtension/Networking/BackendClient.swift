@@ -108,7 +108,6 @@ final class BackendClient {
 
     func ensureAuthed() async {
         if auth.token != nil { return }
-        // Best-effort “device-ish” username; backend allows duplicate = login-like.
         let username = "ios-" + UUID().uuidString.lowercased()
         do {
             let body = try encoder.encode(AuthRegisterIn(username: username, password: nil))
@@ -117,7 +116,7 @@ final class BackendClient {
             auth.token = out.token
             auth.accountId = out.account_id
         } catch {
-            // keep silent; UI can still work with local store
+            //
         }
     }
 
@@ -296,7 +295,6 @@ final class BackendClient {
         req.httpMethod = "GET"
         req.setValue("application/json", forHTTPHeaderField: "Accept")
         req.setValue("Bearer \(auth.token!)", forHTTPHeaderField: "Authorization")
-        // Must exceed server timeout.
         req.timeoutInterval = TimeInterval(max(65, timeoutSeconds + 10))
         return try await send(req, as: [CommunityMessage].self)
     }

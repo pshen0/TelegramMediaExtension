@@ -1,6 +1,5 @@
 import UIKit
 
-/// Список каталога: шапка в стиле профиля (сплошной цвет), UISearchBar, вкладки.
 final class MediaLibraryListViewController: UITableViewController, UISearchBarDelegate {
     private let interactor: MediaLibraryListBusinessLogic
     private var filteredItems: [MediaItem] = []
@@ -10,7 +9,6 @@ final class MediaLibraryListViewController: UITableViewController, UISearchBarDe
     private let chromeHeader = MediaLibraryChromeHeaderView()
     private let emptyOverlay = MediaLibraryEmptyStateView()
 
-    /// Чтобы не вызывать `tableHeaderView = …` на каждом layout (риск бесконечного цикла перерасчёта).
     private var lastTableHeaderSize: CGSize = .zero
     private var isUpdatingTableHeader = false
 
@@ -116,7 +114,6 @@ final class MediaLibraryListViewController: UITableViewController, UISearchBarDe
         restoreDefaultNavigationAppearance()
     }
 
-    /// Плавный переход цвета навбара и подложки из акцента шапки в `systemBackground`, чтобы при скролле не оставалась цветная полоса под статус-баром.
     private func chromeBlendNavigationSurfaceColor(scrollProgress p: CGFloat) -> UIColor {
         let t = min(1, max(0, p))
         return UIColor { tc in
@@ -138,7 +135,6 @@ final class MediaLibraryListViewController: UITableViewController, UISearchBarDe
         }
     }
 
-    /// Только через `navigationItem`: не трогаем общий `UINavigationBar`, чтобы при push другие экраны не «наследовали» цвет шапки медиатеки.
     private func transparentChromeNavigationBarAppearance() -> UINavigationBarAppearance {
         let appearance = UINavigationBarAppearance()
         appearance.configureWithTransparentBackground()
@@ -262,7 +258,6 @@ final class MediaLibraryListViewController: UITableViewController, UISearchBarDe
         }
     }
 
-    /// Полное затухание цветной полосы и совпадение навбара с фоном списка после прокрутки высоты цветного баннера.
     private func updateHeaderScrollFade() {
         let progress = computeScrollFadeProgress()
         chromeHeader.setScrollFadeProgress(progress)

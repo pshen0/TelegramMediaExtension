@@ -1,9 +1,6 @@
 import UIKit
 
-/// Корень приложения: `UITabBarController` с системным таб-баром (Контакты нельзя открыть, Чаты, Настройки).
 final class TMETabBarController: UITabBarController, UITabBarControllerDelegate {
-
-    /// Вкладка «Контакты» — только декоративная, переход на неё блокируется в `shouldSelect`.
     private var contactsNavigationController: UINavigationController!
 
     override func viewDidLoad() {
@@ -35,7 +32,6 @@ final class TMETabBarController: UITabBarController, UITabBarControllerDelegate 
         )
 
         chats.onNavigationStackDidChange = { [weak self] in
-            /// Без второй анимации поверх перехода навигации — иначе таб-бар «отстаёт».
             self?.updateTabBarVisibilityForCurrentStack(animated: false)
         }
         settings.onNavigationStackDidChange = { [weak self] in
@@ -61,7 +57,6 @@ final class TMETabBarController: UITabBarController, UITabBarControllerDelegate 
         updateTabBarVisibilityForCurrentStack(animated: false)
     }
 
-    /// Таб-бар только на корне «Чаты» (`CommunityListViewController`) и корне «Настройки» (`TMESettingsViewController`); при push — скрыт.
     private func updateTabBarVisibilityForCurrentStack(animated: Bool) {
         guard let nav = selectedViewController as? UINavigationController else {
             setTabBarHidden(true, animated: animated)
@@ -72,7 +67,6 @@ final class TMETabBarController: UITabBarController, UITabBarControllerDelegate 
         setTabBarHidden(!showTabBar, animated: animated)
     }
 
-    /// Круглая миниатюра для таб-бара (как аватар в «Настройках»).
     private static func circularTabAvatarImage(named assetName: String, traitCollection: UITraitCollection, diameter: CGFloat = 26) -> UIImage {
         let format = UIGraphicsImageRendererFormat.default()
         format.scale = traitCollection.displayScale

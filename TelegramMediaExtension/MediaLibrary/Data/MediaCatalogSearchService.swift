@@ -1,6 +1,5 @@
 import Foundation
 
-/// Результат внешнего каталога (TMDB при наличии ключа + локальная заглушка для книг/музыки).
 struct MediaCatalogCandidate: Hashable, Identifiable {
     let id: String
     let kind: MediaItemKind
@@ -50,7 +49,7 @@ struct MediaCatalogCandidate: Hashable, Identifiable {
 }
 
 enum MediaCatalogSearchService {
-    /// Поиск: при `TMDBAPIKey` в Info.plist — живой TMDB; иначе только мок + книги/музыка из заглушки.
+    // Поиск: при `TMDBAPIKey` в Info.plist — TMDB
     static func search(query: String) async -> [MediaCatalogCandidate] {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard q.count >= 2 else { return [] }

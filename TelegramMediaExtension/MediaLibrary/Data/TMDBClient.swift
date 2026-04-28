@@ -1,8 +1,5 @@
 import Foundation
 
-/// Метаданные из [The Movie Database](https://www.themoviedb.org/) для автозаполнения карточки.
-/// В `TMDBAPIKey` укажите **либо** v3 API key, **либо** Read Access Token (JWT, начинается с `eyJ`).
-/// JWT передаётся как `Authorization: Bearer`, v3 ключ — как `api_key` в query.
 enum TMDBClient {
     private static let host = "api.themoviedb.org"
 
@@ -13,7 +10,6 @@ enum TMDBClient {
 
     static var isConfigured: Bool { !apiKey.isEmpty }
 
-    /// Read Access Token (JWT) не подставляется в `api_key`; для него нужен заголовок Bearer.
     private static func isBearerToken(_ value: String) -> Bool {
         value.hasPrefix("eyJ") && value.split(separator: ".").count == 3
     }
@@ -33,18 +29,13 @@ enum TMDBClient {
     struct DetailMetadata: Sendable {
         var year: Int?
         var genre: String?
-        /// 0…5, как в медиатеке
         var rating: Double?
         var synopsis: String?
-        /// Сериал: всего эпизодов.
         var totalEpisodes: Int?
-        /// Сериал: сезонов.
         var numberOfSeasons: Int?
-        /// Фильм: длительность в минутах (в прогресс кладём как «всего минут»).
         var runtimeMinutes: Int?
     }
 
-    /// Поиск фильмов и сериалов (`/search/multi`).
     static func searchMulti(query: String) async throws -> [MediaCatalogCandidate] {
         guard isConfigured else { return [] }
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -74,7 +65,6 @@ enum TMDBClient {
         return decoded.results.compactMap(mapSearchResult)
     }
 
-    /// Детали для превью и заполнения формы.
     static func fetchDetail(candidateId: String) async -> DetailMetadata? {
         guard isConfigured else { return nil }
         guard let ref = parseCatalogId(candidateId) else { return nil }

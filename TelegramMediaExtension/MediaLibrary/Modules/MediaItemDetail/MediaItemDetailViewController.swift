@@ -1,6 +1,5 @@
 import UIKit
 
-/// Детализация объекта медиатеки (ТЗ п.2): постер, метаданные, статус, заметки, хэштеги.
 final class MediaItemDetailViewController: UIViewController {
     private let interactor: MediaItemDetailBusinessLogic
     private var item: MediaItem
@@ -108,7 +107,6 @@ final class MediaItemDetailViewController: UIViewController {
         view.addSubview(scroll)
         scroll.addSubview(stack)
 
-        // Важно: скролл идёт под навбаром, чтобы `scrollEdgeAppearance` работал как на списках (blur появляется при прокрутке).
         scroll.pinTop(to: view.topAnchor)
         scroll.pinLeft(to: view)
         scroll.pinRight(to: view)
@@ -188,7 +186,6 @@ final class MediaItemDetailViewController: UIViewController {
         present(ac, animated: true)
     }
 
-    /// Возврат к списку медиатеки (в т.ч. если открывали карточку через сетку).
     private func popToMediaLibraryList() {
         guard let nav = navigationController else { return }
         if let list = nav.viewControllers.first(where: { $0 is MediaLibraryListViewController }) {

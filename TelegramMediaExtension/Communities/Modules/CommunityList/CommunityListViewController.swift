@@ -15,7 +15,7 @@ final class CommunityListViewController: UITableViewController, UISearchResultsU
         return sc
     }()
 
-    /// Всегда выбран «Сообщества»; выбор другой вкладки сразу откатывается на «Сообщества».
+    // Всегда выбран «Сообщества»; выбор другой вкладки сразу откатывается на «Сообщества».
     private let feedSegmentControl: UISegmentedControl = {
         let s = UISegmentedControl(items: ["Все", "Сообщества", "Новые", "Каналы"])
         s.selectedSegmentIndex = 1
@@ -32,12 +32,10 @@ final class CommunityListViewController: UITableViewController, UISearchResultsU
         return sv
     }()
 
-    /// Отступы: меньше до поиска сверху и до списка чатов снизу; высота дорожки сегмента.
     private enum FeedSegmentMetrics {
         static let controlHeight: CGFloat = 40
         static let topInset: CGFloat = 4
         static let bottomInset: CGFloat = 4
-        /// Доп. ширина сегмента кроме текста — больше «воздуха» у плашки выбора от краёв подписи.
         static let segmentInnerHorizontalPadding: CGFloat = 36
         static var headerHeight: CGFloat { topInset + controlHeight + bottomInset }
     }
@@ -62,7 +60,6 @@ final class CommunityListViewController: UITableViewController, UISearchResultsU
         return v
     }()
 
-    /// Горизонталь совпадает с контентной областью таблицы (как у строк и типичной поисковой строки под навбаром).
     private var segmentScrollHorizontalConstraints: [NSLayoutConstraint] = []
 
     private var lastLaidOutSegmentContainerWidth: CGFloat = 0
@@ -125,7 +122,6 @@ final class CommunityListViewController: UITableViewController, UISearchResultsU
 
     private func pinSegmentScrollHorizontalToTableContent() {
         NSLayoutConstraint.deactivate(segmentScrollHorizontalConstraints)
-        /// Горизонталь совпадает с безопасной областью таблицы — как проектная ширина поисковой строки под навбаром.
         let leading = segmentScrollView.pinLeft(to: tableView.safeAreaLayoutGuide.leadingAnchor, 15)
         let trailing = segmentScrollView.pinRight(to: tableView.safeAreaLayoutGuide.trailingAnchor, 15)
         segmentScrollHorizontalConstraints = [leading, trailing]
@@ -136,7 +132,6 @@ final class CommunityListViewController: UITableViewController, UISearchResultsU
         applyFeedSegmentAppearance()
     }
 
-    /// 13 pt; подписи не режем — ширины сегментов считаются по тексту + запас; при необходимости горизонтальный скролл.
     private func applyFeedSegmentAppearance() {
         let font = UIFont.systemFont(ofSize: 13, weight: .semibold)
         let primary = UIColor.label
@@ -158,7 +153,6 @@ final class CommunityListViewController: UITableViewController, UISearchResultsU
         layoutFeedSegmentWidthsIfNeeded()
     }
 
-    /// Растягивает вкладки на ширину контейнера (как один ряд с поиском); если сумма минимальных ширин больше — горизонтальный скролл.
     private func layoutFeedSegmentWidthsIfNeeded() {
         let w = segmentScrollView.bounds.width
         guard w > 1 else { return }
@@ -271,7 +265,6 @@ final class CommunityListViewController: UITableViewController, UISearchResultsU
         tableView.deselectRow(at: indexPath, animated: true)
         let row = rows[indexPath.row]
         if row.kind == .discover {
-            // Clear search so the joined community doesn't appear twice.
             communitySearchController.searchBar.text = ""
             communitySearchController.isActive = false
             interactor.updateSearch(CommunityListModel.UpdateSearch.Request(query: ""))

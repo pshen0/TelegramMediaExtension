@@ -1,7 +1,5 @@
 import UIKit
 
-// MARK: - Контекст сверху (пост / комментарий)
-
 final class ThreadContextHeaderView: UIView {
     private let badge = UILabel()
     private let bubble = UIView()

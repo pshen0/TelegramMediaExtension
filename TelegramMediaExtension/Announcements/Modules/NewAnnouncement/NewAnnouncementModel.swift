@@ -1,6 +1,6 @@
 import Foundation
 
-/// Request / Response / ViewModel для экрана нового/редактируемого анонса (SVIP).
+//MARK: - Request / Response / ViewModel для экрана нового/редактируемого анонса (SVIP).
 enum NewAnnouncementModel {
 
     enum Mode {

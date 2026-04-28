@@ -3,25 +3,24 @@ import UIKit
 final class CommunityMessageCell: UITableViewCell {
     static let reuseId = "CommunityMessageCell"
 
-    /// Вертикальные отступы между карточками в ленте (одинаково для поста и анонса).
     private enum LayoutMetrics {
         static let spacingAboveCard: CGFloat = 5
         static let spacingBelowCard: CGFloat = 5
         static let horizontalInset: CGFloat = 8
         static let announcementInnerTop: CGFloat = 5
         static let announcementImageHeight: CGFloat = 180
-        /// Выравниваем с полями текста анонса.
+
         static let announcementImageSideInset: CGFloat = 9
         static let announcementImageBottomGap: CGFloat = 5
         static let titleBodyGap: CGFloat = 4
         static let bodyBottomGap: CGFloat = 5
-        /// Совпадает с `bodyBottomGap`, чтобы высота строки и вёрстка совпадали со ссылкой и без.
+
         static let linkBottomGap: CGFloat = 5
         static let footerRowHeight: CGFloat = 22
         static let footerBottomPadding: CGFloat = 5
-        /// Поля текста анонса от края пузыря.
+
         static let announcementTextSideInset: CGFloat = 9
-        /// Текст поста от краёв пузыря (время считается от того же базового края).
+
         static let postTextSideInset: CGFloat = 9
         static let announcementTimeTrailingInset: CGFloat = 7
         static let footerLocationTimeGap: CGFloat = 4
@@ -38,7 +37,6 @@ final class CommunityMessageCell: UITableViewCell {
     private var spoilerDecision: CommunityChatModel.SpoilerDecision?
     private var spoilerIsRevealed = false
 
-    /// Анонс: полноширинная карточка
     private let bubble = UIView()
     private let announcementImageView = UIImageView()
     private let titleLabel = UILabel()
@@ -47,7 +45,6 @@ final class CommunityMessageCell: UITableViewCell {
     private let locationButton = UIButton(type: .system)
     private let timeLabel = UILabel()
 
-    /// Пост: один пузырь — текст + время внизу справа, снизу строка «Leave a Comment»
     private let postBubble = UIView()
     private let postDivider = UIView()
     private let actionsRow = UIControl()
@@ -166,7 +163,6 @@ final class CommunityMessageCell: UITableViewCell {
         applyMediaLibraryChromeColors()
     }
 
-    /// Цвета «Leave a Comment», ссылок и места — как шапка медиатеки (обновлять при смене цвета в каталоге).
     func applyMediaLibraryChromeColors() {
         let c = MediaLibraryHeaderBannerColor.catalogChromeAccent(for: traitCollection)
         actionsIcon.tintColor = c
@@ -178,7 +174,6 @@ final class CommunityMessageCell: UITableViewCell {
         locationButton.tintColor = c
     }
 
-    /// Та же высота, что даёт `linkButton.sizeThatFits` в layout — иначе строка таблицы не совпадает с карточкой при ссылке.
     private static func announcementLinkButtonBlockHeight(displayTitle: String, innerWidth: CGFloat) -> CGFloat {
         let b = UIButton(type: .system)
         b.titleLabel?.font = TMETheme.Fonts.body(13)

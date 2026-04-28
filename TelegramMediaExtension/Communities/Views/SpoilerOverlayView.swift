@@ -1,6 +1,6 @@
 import UIKit
 
-// MARK: - Spoiler overlay (blur + "помехи")
+// MARK: - Spoiler overlay
 
 final class SpoilerOverlayView: UIControl {
     var onTap: (() -> Void)?
@@ -36,7 +36,6 @@ final class SpoilerOverlayView: UIControl {
         pill.layer.cornerRadius = 12
         if #available(iOS 13.0, *) { pill.layer.cornerCurve = .continuous }
 
-        // Название и сезон/эпизод — одинаковый шрифт.
         titleLabel.font = TMETheme.Fonts.body(13)
         titleLabel.textColor = .label
         titleLabel.numberOfLines = 2
@@ -87,15 +86,12 @@ final class SpoilerOverlayView: UIControl {
         dim.frame = bounds
         particles.frame = bounds
 
-        // Компактная плашка по центру.
         let maxW = min(bounds.width - 16, 220)
 
         let pad: CGFloat = 6
         let interLine: CGFloat = 3
         let maxInnerW = max(60, maxW - pad * 2)
 
-        // Делаем ширину плашки по фактической ширине текста, а не фиксированной,
-        // иначе визуально горизонтальные отступы выглядят больше вертикальных.
         let titleSize = titleLabel.sizeThatFits(CGSize(width: maxInnerW, height: 200))
         let subSize = subtitleLabel.sizeThatFits(CGSize(width: maxInnerW, height: 200))
         let usedInnerW = min(maxInnerW, max(ceil(titleSize.width), ceil(subSize.width)))

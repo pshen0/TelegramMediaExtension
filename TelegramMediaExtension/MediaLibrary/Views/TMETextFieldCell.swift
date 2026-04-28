@@ -1,7 +1,5 @@
 import UIKit
 
-// MARK: - Ячейка с полем (заголовок слева многострочно по центру строки, поле справа с обрезкой)
-
 final class TMETextFieldCell: UITableViewCell, UITextFieldDelegate {
     private let onChange: (String) -> Void
     let field = UITextField()

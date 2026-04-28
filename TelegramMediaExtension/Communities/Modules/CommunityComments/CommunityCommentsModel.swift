@@ -1,6 +1,6 @@
 import Foundation
 
-/// Request / Response / ViewModel для экрана комментариев (SVIP).
+// MARK: - Request / Response / ViewModel для экрана комментариев (SVIP).
 enum CommunityCommentsModel {
 
     enum ViewDidLoad {

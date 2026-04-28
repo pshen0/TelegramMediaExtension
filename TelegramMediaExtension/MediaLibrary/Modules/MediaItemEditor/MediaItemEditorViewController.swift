@@ -4,7 +4,6 @@ import UIKit
 final class MediaItemEditorViewController: UITableViewController {
     enum Mode {
         case create
-        /// Данные из каталога (TMDB и т.п.) — поля уже заполнены, пользователь правит и сохраняет.
         case createPrefilled(MediaItem)
         case edit(existing: MediaItem)
 
@@ -117,7 +116,6 @@ final class MediaItemEditorViewController: UITableViewController {
             if item.kind == .series { return 3 }
             return 2
         case .spoilers:
-            // Только для TMDB-объектов: `catalogSourceID` вида `tmdb-…`.
             guard let id = item.catalogSourceID, id.hasPrefix("tmdb-") else { return 0 }
             return 1
         case .notes: return 1

@@ -1,6 +1,5 @@
 import UIKit
 
-/// Тап по «пустому» месту экрана закрывает клавиатуру, не перехватывая кнопки и поля ввода.
 @MainActor
 final class MediaLibraryKeyboardDismissOnTapOutside: NSObject, UIGestureRecognizerDelegate {
     private weak var hostView: UIView?

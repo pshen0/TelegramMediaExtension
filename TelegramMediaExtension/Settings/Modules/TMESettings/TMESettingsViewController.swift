@@ -70,7 +70,6 @@ final class TMESettingsViewController: UIViewController {
         if #available(iOS 13.0, *) {
             headerAvatar.layer.cornerCurve = .continuous
         }
-        // Мок-аватар из ассетов.
         headerAvatar.image = UIImage(named: "cat1")
         headerAvatar.tintColor = nil
         headerAvatar.backgroundColor = UIColor.white.withAlphaComponent(0.12)
@@ -172,8 +171,6 @@ final class TMESettingsViewController: UIViewController {
         return clip
     }
 
-    // Rows are now driven by SVIP viewModel.
-
     private func presentBackendURLPrompt() {
         let current = BackendAuthStore.shared.baseURL.absoluteString
         let ac = UIAlertController(
@@ -198,7 +195,7 @@ final class TMESettingsViewController: UIViewController {
                 return
             }
             BackendAuthStore.shared.baseURL = url
-            // token remains; backend may differ, user can restart to re-auth if needed.
+
             self?.contentStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
             self?.buildContent()
         })
@@ -223,7 +220,6 @@ private final class SettingsRowView: UIControl {
 
         backgroundColor = .clear
 
-        // Без серых квадратов под иконками — как в Telegram.
         iconHolder.backgroundColor = .clear
 
         iconImage.contentMode = .scaleAspectFit
@@ -327,8 +323,6 @@ private final class SettingsRowView: UIControl {
         onTap?()
     }
 }
-
-// MARK: - SVIP
 
 extension TMESettingsViewController: TMESettingsDisplayLogic {
     func displayRows(_ viewModel: TMESettingsModel.Rows.ViewModel) {

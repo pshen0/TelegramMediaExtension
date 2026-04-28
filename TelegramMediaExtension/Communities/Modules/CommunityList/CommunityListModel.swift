@@ -1,6 +1,6 @@
 import Foundation
 
-/// Request / Response / ViewModel для списка сообществ (SVIP).
+// MARK: - Request / Response / ViewModel для списка сообществ (SVIP).
 enum CommunityListModel {
 
     enum ViewDidLoad {

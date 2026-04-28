@@ -1,6 +1,5 @@
 import UIKit
 
-/// Список сохранённых анонсов с шапкой как в медиатеке (`MediaLibraryChromeHeaderView`) и поиском (SVIP: View → Interactor → Presenter).
 final class AnnouncementsChromeListViewController: UITableViewController {
 
     private let interactor: AnnouncementsChromeListBusinessLogic

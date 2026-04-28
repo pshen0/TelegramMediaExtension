@@ -1,6 +1,5 @@
 import UIKit
 
-/// Комментарии к посту или вложенное обсуждение под одним комментарием (`threadParentCommentId`).
 final class CommunityCommentsViewController: UIViewController, UITableViewDataSource, UITableViewDelegate, UITextViewDelegate {
 
     private let interactor: CommunityCommentsInteractor
@@ -13,11 +12,9 @@ final class CommunityCommentsViewController: UIViewController, UITableViewDataSo
         static let multilinePillMaxCornerRadius: CGFloat = 20
         static let gapLastCommentToInputBar: CGFloat = 10
         static let scrollPinnedBottomSlack: CGFloat = 48
-        /// Доп. отступ контента под размытый навбар (как был `contentInset.top` при привязке к safe area).
         static let tableTopExtraPadding: CGFloat = 8
     }
 
-    /// Цепочка только из трёх экранов: сообщество → комментарии → обсуждение; глубже переходов нет.
     private var allowsOpeningNestedThread: Bool { interactor.threadParentCommentId == nil }
 
     private let tableView = UITableView(frame: .zero, style: .plain)
@@ -250,7 +247,6 @@ final class CommunityCommentsViewController: UIViewController, UITableViewDataSo
         applyCommentsNavigationAppearance()
     }
 
-    /// Как у корневого меню и форм медиатеки: стандартный материал с размытием (`configureWithDefaultBackground`).
     private func commentsNavigationBarAppearance() -> UINavigationBarAppearance {
         let appearance = UINavigationBarAppearance()
         appearance.configureWithDefaultBackground()
@@ -279,7 +275,6 @@ final class CommunityCommentsViewController: UIViewController, UITableViewDataSo
         }
     }
 
-    /// Как список «Сообщества»: контент уходит под навбар и виден через размытие.
     private func updateCommentsTableTopInset() {
         let newTop = view.safeAreaInsets.top + InputBarMetrics.tableTopExtraPadding
         let oldTop = tableView.contentInset.top

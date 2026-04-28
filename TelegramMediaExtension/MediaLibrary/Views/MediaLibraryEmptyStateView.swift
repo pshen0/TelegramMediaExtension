@@ -1,15 +1,12 @@
 import UIKit
 
-/// Пустая медиатека: текст по центру полосы между нижним краем шапки (вкладки) и низом экрана.
 final class MediaLibraryEmptyStateView: UIView {
     private let label = UILabel()
 
-    /// Нижняя граница блока вкладок в координатах этого view (обновляется при скролле шапки).
     var headerBottomY: CGFloat = 0 {
         didSet { setNeedsLayout() }
     }
 
-    /// Отступ снизу до индикатора Home и т.п.
     var bottomSafeInset: CGFloat = 0 {
         didSet { setNeedsLayout() }
     }

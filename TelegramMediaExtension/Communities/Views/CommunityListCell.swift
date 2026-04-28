@@ -124,7 +124,6 @@ final class CommunityListCell: UITableViewCell {
         let bodyFont = subtitleLabel.font ?? TMETheme.Fonts.body(15)
         let subtitleTwoLineH = ceil(bodyFont.lineHeight * 2 + 1)
 
-        /// Вертикальное центрирование аватара: одинаковый зазор от верха/низа плашки до круга.
         let avatarY = floor((b.height - avatarSide) / 2)
         let titleY = avatarY
 

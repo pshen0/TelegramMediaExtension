@@ -1,6 +1,5 @@
 import UIKit
 
-/// Шапка: цветная полоса + системная строка поиска (`UISearchBar`) и кнопка закрытия клавиатуры справа при фокусе.
 final class MediaLibraryChromeHeaderView: UIView {
     enum BannerImage: Equatable {
         case duck1
@@ -24,7 +23,6 @@ final class MediaLibraryChromeHeaderView: UIView {
         }
     }
 
-    /// Тап по цветной полосе над поиском — выбор цвета шапки.
     var onBannerTap: (() -> Void)?
 
     var onSearchDismiss: (() -> Void)?
@@ -47,7 +45,6 @@ final class MediaLibraryChromeHeaderView: UIView {
 
     private(set) var showsSearchDismissButton = false
 
-    /// Если `false`, строка поиска (и кнопка закрытия) скрыты, высота шапки становится компактнее.
     var showsSearchBar: Bool = true {
         didSet {
             guard showsSearchBar != oldValue else { return }
@@ -61,7 +58,6 @@ final class MediaLibraryChromeHeaderView: UIView {
         }
     }
 
-    /// Если `false`, блок вкладок под поиском скрыт (например, экран «Анонсы» в медиатеке).
     var showsFolderTabs: Bool = true {
         didSet {
             guard showsFolderTabs != oldValue else { return }
@@ -283,7 +279,6 @@ final class MediaLibraryChromeHeaderView: UIView {
         onSearchDismiss?()
     }
 
-    /// Стандартный вид отдельной `UISearchBar` в контенте (не `UISearchController` / не навбар): только акцентный tint.
     private func applySystemSearchBarAppearance() {
         searchBar.tintColor = TMETheme.Colors.accent
         searchBar.searchBarStyle = .prominent

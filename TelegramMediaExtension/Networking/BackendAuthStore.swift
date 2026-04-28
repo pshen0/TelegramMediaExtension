@@ -40,7 +40,6 @@ final class BackendAuthStore {
                let u = URL(string: raw) {
                 return u
             }
-            // Default for Simulator / local dev.
             return URL(string: "http://127.0.0.1:8000")!
         }
         set {

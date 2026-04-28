@@ -1,6 +1,5 @@
 import UIKit
 
-/// Вкладка «Поиск в базах»: строка поиска + результаты (заглушка API).
 final class MediaCatalogSearchViewController: UITableViewController, UISearchBarDelegate {
     private let interactor: MediaCatalogSearchBusinessLogic
     weak var addFlowCoordinator: AddToMediaLibraryViewController?

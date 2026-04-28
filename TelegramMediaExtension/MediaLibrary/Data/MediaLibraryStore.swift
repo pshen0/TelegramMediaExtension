@@ -44,7 +44,6 @@ final class MediaLibraryStore: ObservableObject {
         self.items = decoded.sorted(by: { $0.updatedAt > $1.updatedAt })
     }
 
-    /// Принудительно перечитать с диска (если данные могли измениться извне).
     func reloadFromDisk() {
         isLoaded = true
         do {
@@ -108,7 +107,6 @@ final class MediaLibraryStore: ObservableObject {
         persist()
     }
 
-    /// Каталог JPEG-обложек (Application Support).
     static var coversDirectoryURL: URL {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let root = appSupport.appendingPathComponent("TelegramMediaExtension", isDirectory: true)
@@ -132,7 +130,7 @@ final class MediaLibraryStore: ObservableObject {
             let data = try JSONEncoder().encode(items)
             try data.write(to: fileURL, options: [.atomic])
         } catch {
-            // Demo: игнорируем ошибки записи
+            //
         }
     }
 }

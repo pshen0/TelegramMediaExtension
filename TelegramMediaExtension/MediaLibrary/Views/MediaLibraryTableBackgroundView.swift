@@ -1,6 +1,5 @@
 import UIKit
 
-/// Сплошной фон списка (градиент только в шапке таблицы, чтобы уезжал при скролле).
 final class MediaLibraryTableBackgroundView: UIView {
     private let solidFill = UIView()
 

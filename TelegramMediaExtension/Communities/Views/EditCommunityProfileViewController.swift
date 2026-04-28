@@ -2,8 +2,6 @@ import PhotosUI
 import SafariServices
 import UIKit
 
-// MARK: - Редактирование названия и аватара (только из чата)
-
 final class EditCommunityProfileViewController: UITableViewController, PHPickerViewControllerDelegate {
     private enum Section: Int {
         case avatar = 0
@@ -91,7 +89,6 @@ final class EditCommunityProfileViewController: UITableViewController, PHPickerV
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        // Кнопки в навбаре — системного tint.
     }
 
     private func applyAvatarPlaceholderChrome(to avatarView: UIImageView) {

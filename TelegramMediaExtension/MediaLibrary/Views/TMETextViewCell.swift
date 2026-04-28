@@ -1,7 +1,5 @@
 import UIKit
 
-// MARK: - Заметка: до 3000 символов, рост по высоте, плейсхолдер по центру
-
 final class TMETextViewCell: UITableViewCell, UITextViewDelegate {
     static let defaultNotesMaxLength = 3000
     static let verticalPadding: CGFloat = 8

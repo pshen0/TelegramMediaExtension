@@ -100,7 +100,6 @@ final class CommunityCommentsInteractor: CommunityCommentsBusinessLogic {
         )
     }
 
-    /// Для шапки «Обсуждение»: комментарий‑родитель в корневой ветке.
     func parentCommentForThreadHeader() -> CommunityComment? {
         guard let tid = threadParentCommentId else { return nil }
         let roots = store.comments(for: rootMessage.id, threadParentCommentId: nil)

@@ -68,7 +68,6 @@ final class CommunityChatInteractor: CommunityChatBusinessLogic {
                 do {
                     try await self.store.longPollNewMessages(communityId: self.communityId)
                 } catch {
-                    // Backoff on network errors.
                     try? await Task.sleep(nanoseconds: 1_000_000_000)
                 }
             }

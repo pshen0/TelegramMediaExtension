@@ -53,7 +53,7 @@ final class CommunityStore: ObservableObject {
             try FileManager.default.createDirectory(at: Self.announcementImagesDirectoryURL, withIntermediateDirectories: true)
             try data.write(to: Self.announcementImagesDirectoryURL.appendingPathComponent(fileName), options: [.atomic])
         } catch {
-            // ignore
+            //
         }
     }
 
@@ -68,7 +68,7 @@ final class CommunityStore: ObservableObject {
             let (data, _) = try await URLSession.shared.data(from: url)
             cacheAnnouncementImage(data: data, fileName: fileName)
         } catch {
-            // ignore
+            //
         }
     }
 
@@ -85,7 +85,6 @@ final class CommunityStore: ObservableObject {
         return communityAvatarsDirectoryURL.appendingPathComponent(fileName)
     }
 
-    /// Сохраняет JPEG-аватар; старый файл удаляется.
     func setCommunityAvatar(communityId: UUID, jpegData: Data) throws {
         loadIfNeeded()
         guard let i = communities.firstIndex(where: { $0.id == communityId }) else { return }
@@ -165,7 +164,7 @@ final class CommunityStore: ObservableObject {
             communities = remote.sorted { $0.updatedAt > $1.updatedAt }
             persist()
         } catch {
-            // Keep local cache.
+            //
         }
     }
 
@@ -175,7 +174,6 @@ final class CommunityStore: ObservableObject {
         guard !remote.isEmpty else { return }
         for c in remote {
             upsertCommunity(c)
-            // Keep list preview fresh: pull new messages/comments for changed communities.
             await refreshNewMessages(communityId: c.id)
             if let lastMsg = lastMessage(for: c.id) {
                 await refreshComments(messageId: lastMsg.id, threadParentCommentId: nil)
@@ -190,14 +188,11 @@ final class CommunityStore: ObservableObject {
             let m = try await backend.myMembership(communityId: communityId)
             membershipRoles[communityId] = m.role
         } catch {
-            // Not joined or offline.
             membershipRoles.removeValue(forKey: communityId)
         }
     }
 
     func canSendMessages(in communityId: UUID) -> Bool {
-        // Block input only when we know the user is a reader.
-        // For "unknown" (not fetched yet / transient), keep input visible; backend still enforces permissions.
         membershipRoles[communityId] != "reader"
     }
 
@@ -211,11 +206,10 @@ final class CommunityStore: ObservableObject {
             touchCommunity(communityId)
             persist()
         } catch {
-            // Keep local cache.
+            //
         }
     }
 
-    /// Incrementally fetch new messages from backend.
     func refreshNewMessages(communityId: UUID) async {
         let last = messages(for: communityId).last?.createdAt
         do {
@@ -231,11 +225,10 @@ final class CommunityStore: ObservableObject {
             touchCommunity(communityId)
             persist()
         } catch {
-            // ignore
+            //
         }
     }
 
-    /// Waits until backend has new messages (or timeout), then merges them.
     func longPollNewMessages(communityId: UUID) async throws {
         let last = messages(for: communityId).last?.createdAt
         let remote = try await backend.longPollMessages(communityId: communityId, after: last, timeoutSeconds: 25, limit: 200)
@@ -260,7 +253,7 @@ final class CommunityStore: ObservableObject {
             comments.sort { $0.createdAt < $1.createdAt }
             persist()
         } catch {
-            // Keep local cache.
+            //
         }
     }
 
@@ -296,7 +289,7 @@ final class CommunityStore: ObservableObject {
                 await self.refreshCommunities()
                 await self.refreshMyMembershipRole(communityId: c.id)
             } catch {
-                // ignore: offline / dev
+                //
             }
         }
         return c
@@ -327,7 +320,7 @@ final class CommunityStore: ObservableObject {
                 _ = try await backend.updateCommunityTitle(communityId: communityId, title: t)
                 await self.refreshCommunities()
             } catch {
-                // ignore
+                //
             }
         }
     }
@@ -456,7 +449,7 @@ final class CommunityStore: ObservableObject {
                 _ = try await backend.createPost(communityId: communityId, id: m.id, text: t, spoilerTags: spoilerTags)
                 await self.refreshMessages(communityId: communityId)
             } catch {
-                // ignore
+                //
             }
         }
     }
@@ -502,7 +495,6 @@ final class CommunityStore: ObservableObject {
         }
     }
 
-    /// Создаёт личный анонс (без привязки к сообществу) в разделе «Мои анонсы».
     func addPersonalAnnouncement(
         title: String,
         date: Date,
@@ -647,7 +639,7 @@ final class CommunityStore: ObservableObject {
             let data = try enc.encode(Persisted(communities: communities, messages: messages, savedAnnouncements: savedAnnouncements, comments: comments))
             try data.write(to: fileURL, options: [.atomic])
         } catch {
-            // demo: ignore
+            //
         }
     }
 }

@@ -1,10 +1,8 @@
 import Foundation
 import UIKit
 
-/// Цвет оформления шапки медиатеки: сохранение в каталог Application Support + миграция со старым ключом UserDefaults.
 enum MediaLibraryHeaderBannerColor {
     private static let legacyDefaultsKey = "MediaLibrary.bannerHeaderRGBA"
-    /// Резервная копия в UserDefaults, если запись JSON в Application Support недоступна.
     private static let defaultsBackupKey = "MediaLibrary.bannerHeaderRGBA.defaultsBackup"
     private static let accentFileName = "banner_accent_color.json"
 
@@ -23,7 +21,6 @@ enum MediaLibraryHeaderBannerColor {
         return dir.appendingPathComponent(accentFileName)
     }
 
-    /// Стандартный цвет до выбора пользователя (зависит от светлой/тёмной темы).
     static func defaultFallback(for trait: UITraitCollection) -> UIColor {
         if trait.userInterfaceStyle == .dark {
             return UIColor(red: 0.11, green: 0.12, blue: 0.15, alpha: 1)
@@ -31,12 +28,10 @@ enum MediaLibraryHeaderBannerColor {
         return UIColor(red: 0.90, green: 0.92, blue: 0.95, alpha: 1)
     }
 
-    /// Тот же цвет, что у полосы шапки в медиатеке — для кнопок и акцентного текста на других экранах приложения.
     static func catalogChromeAccent(for trait: UITraitCollection) -> UIColor {
         resolved(for: trait)
     }
 
-    /// Цвет подложки bounce / навбара и баннера.
     static func resolved(for trait: UITraitCollection) -> UIColor {
         if let rgba = loadFromUserData() {
             return UIColor(red: rgba.r, green: rgba.g, blue: rgba.b, alpha: rgba.a)
@@ -47,7 +42,6 @@ enum MediaLibraryHeaderBannerColor {
         return defaultFallback(for: trait)
     }
 
-    /// Сохраняет выбор в Application Support (`TelegramMediaExtension/banner_accent_color.json`).
     static func setCustom(_ color: UIColor) {
         let c = color.resolvedColor(with: UITraitCollection(userInterfaceStyle: .light))
         var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
@@ -74,7 +68,6 @@ enum MediaLibraryHeaderBannerColor {
         loadFromUserData() != nil
     }
 
-    /// Запись в Application Support; при ошибке — резерв в `defaultsBackupKey`. После успешной записи на диск стираем устаревший ключ `legacyDefaultsKey`.
     private static func savePersisted(_ value: StoredRGBA) {
         if persistToDisk(value) {
             UserDefaults.standard.removeObject(forKey: legacyDefaultsKey)
@@ -130,7 +123,6 @@ enum MediaLibraryHeaderBannerColor {
         return rgba
     }
 
-    /// Прозрачность фона квадрата-постера без обложки (как на списке медиатеки).
     static let posterPlaceholderFillAlpha: CGFloat = 0.12
 
     static func posterPlaceholderTint(for trait: UITraitCollection) -> UIColor {

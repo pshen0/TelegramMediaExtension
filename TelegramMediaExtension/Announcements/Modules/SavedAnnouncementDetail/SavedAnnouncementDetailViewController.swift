@@ -1,14 +1,12 @@
 import SafariServices
 import UIKit
 
-/// Карточка сохранённого анонса: баннер с нижним градиентом и заголовком на нём; блок деталей без прокрутки.
 final class SavedAnnouncementDetailViewController: UIViewController {
 
     private let interactor: SavedAnnouncementDetailInteractor
 
     private let bannerView = UIImageView()
     private var bannerHeightConstraint: NSLayoutConstraint!
-    /// Было 260 pt — увеличение на ⅓: 260 × 4/3 (высота задаётся только после загрузки JPEG).
     private static let bannerImageBaseHeight: CGFloat = 260
     private static var bannerImageHeight: CGFloat { (bannerImageBaseHeight * 4.0 / 3.0).rounded() }
 
@@ -169,7 +167,6 @@ final class SavedAnnouncementDetailViewController: UIViewController {
         }
     }
 
-    /// Только для загрузки JPEG баннера по актуальному состоянию стора.
     private func storeAnnouncementSnapshot() -> SavedAnnouncement? {
         CommunityStore.shared.savedAnnouncements.first { $0.id == interactor.announcementId }
     }

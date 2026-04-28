@@ -7,9 +7,9 @@ final class CommunityChatViewController: UIViewController, UITableViewDataSource
     private let interactor: CommunityChatInteractor
 
     private let tableView = UITableView(frame: .zero, style: .plain)
-    /// Панель ввода без размытия (фон прозрачный, только непрозрачные контролы).
+
     private let inputContainer = UIView()
-    /// Капсула вокруг поля ввода.
+
     private let inputPill = UIView()
     private let inputField = UITextView()
     private let inputPlaceholderLabel = UILabel()
@@ -20,19 +20,18 @@ final class CommunityChatViewController: UIViewController, UITableViewDataSource
     private var textViewHeightConstraint: NSLayoutConstraint!
 
     private enum InputBarMetrics {
-        /// Диаметр круглых кнопок (анонс / отправка), совпадает с высотой однострочной капсулы.
         static let sideDiameter: CGFloat = 32
         static let barVerticalMargin: CGFloat = 6
         static let pillInnerVerticalPadding: CGFloat = 5
         static let minTextHeight: CGFloat = 20
         static var compactPillHeight: CGFloat { minTextHeight + pillInnerVerticalPadding * 2 }
-        /// При 2+ строках не используем `h/2`, иначе поле выглядит как вытянутый цилиндр.
+
         static let multilinePillMaxCornerRadius: CGFloat = 20
-        /// Как между двумя карточками в ленте: `CommunityMessageCell` spacingBelowCard + spacingAboveCard.
+
         static let gapLastMessageToInputBar: CGFloat = 10
-        /// Зона «как у нижнего края» при открытой клавиатуре (избегаем ложного «не в конце» из‑за округления).
+
         static let scrollPinnedBottomSlack: CGFloat = 48
-        /// Доп. отступ контента под размытый навбар (как был `contentInset.top` при привязке к safe area).
+
         static let tableTopExtraPadding: CGFloat = 8
     }
 
@@ -43,7 +42,7 @@ final class CommunityChatViewController: UIViewController, UITableViewDataSource
     private var mediaLibraryChromeObserver: NSObjectProtocol?
     private var keyboardFrameObserver: NSObjectProtocol?
     private var keyboardHideObserver: NSObjectProtocol?
-    /// Последняя высота перекрытия клавиатуры из уведомления — при росте только поля ввода layout/guide может временно давать 0.
+
     private var cachedKeyboardBottomOverlap: CGFloat = 0
     private lazy var dismissKeyboardTap: UITapGestureRecognizer = {
         let t = UITapGestureRecognizer(target: self, action: #selector(handleDismissKeyboardTap))
@@ -249,7 +248,6 @@ final class CommunityChatViewController: UIViewController, UITableViewDataSource
         })
     }
 
-    /// Высота пересечения клавиатуры с нижней частью `view` по `keyboardFrameEndUserInfoKey`.
     private func keyboardOverlapHeight(from note: Notification) -> CGFloat {
         guard let rect = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return 0 }
         var best = max(0, view.bounds.maxY - view.convert(rect, from: nil).minY)
@@ -260,20 +258,16 @@ final class CommunityChatViewController: UIViewController, UITableViewDataSource
         return best
     }
 
-    /// Часть экрана под панелью ввода, занятая клавиатурой (без высоты самой панели), из текущего layout.
     private func keyboardOverlapFromInputBarLayout() -> CGFloat {
         max(0, view.bounds.maxY - inputContainer.frame.maxY)
     }
 
-    /// Перекрытие клавиатурой по `keyboardLayoutGuide` (не обнуляется между кадрами анимации).
     private func keyboardOverlapFromKeyboardGuide() -> CGFloat {
         let lf = view.keyboardLayoutGuide.layoutFrame
         guard lf.height > 0.5 || lf.minY < view.bounds.maxY - 0.5 else { return 0 }
         return max(0, view.bounds.maxY - lf.minY)
     }
 
-    /// Снизу таблицы: высота панели + пересечение с клавиатурой + отступ как между сообщениями.
-    /// - Parameter deferGrowingScroll: при росте inset (клавиатура открывается) не трогать offset здесь — прокрутка после анимации.
     private func updateChatTableBottomInset(keyboardOverlap: CGFloat? = nil, adjustScroll: Bool, deferGrowingScroll: Bool = false) {
         view.layoutIfNeeded()
         let barH = inputContainer.bounds.height
@@ -283,11 +277,13 @@ final class CommunityChatViewController: UIViewController, UITableViewDataSource
         let fromGuide = keyboardOverlapFromKeyboardGuide()
         let mergedLocal = max(fromLayout, fromGuide, cachedKeyboardBottomOverlap)
         let overlap: CGFloat
+
         if let k = keyboardOverlap {
             overlap = max(k, mergedLocal)
         } else {
             overlap = mergedLocal
         }
+
         let obscured = overlap + barH
         let gap = InputBarMetrics.gapLastMessageToInputBar
         let newBottom = obscured + gap
@@ -332,7 +328,6 @@ final class CommunityChatViewController: UIViewController, UITableViewDataSource
         }
     }
 
-    /// Прокрутка к последнему сообщению с учётом `contentInset` (над панелью и клавиатурой).
     private func scrollChatToLastRowRespectingInset(animated: Bool) {
         guard !messages.isEmpty else { return }
         let ip = IndexPath(row: messages.count - 1, section: 0)
@@ -392,7 +387,6 @@ final class CommunityChatViewController: UIViewController, UITableViewDataSource
         interactor.viewWillDisappear()
     }
 
-    /// Как список «Сообщества»: контент уходит под навбар и виден через размытие, а не под сплошную подложку.
     private func updateChatTableTopInset() {
         let newTop = view.safeAreaInsets.top + InputBarMetrics.tableTopExtraPadding
         let oldTop = tableView.contentInset.top
@@ -489,7 +483,7 @@ final class CommunityChatViewController: UIViewController, UITableViewDataSource
         var tagCfg = UIButton.Configuration.plain()
         tagCfg.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(pointSize: 13, weight: .bold)
         tagCfg.image = UIImage(systemName: pendingSpoilerTags.isEmpty ? "tag" : "tag.fill")
-        // Заполняем сам тег (`tag.fill`), без «круга» вокруг.
+
         tagCfg.baseForegroundColor = accent
         tagCfg.background.backgroundColor = .clear
         tagCfg.background.cornerRadius = r
@@ -655,7 +649,7 @@ final class CommunityChatViewController: UIViewController, UITableViewDataSource
         spoilerTagButton.setImage(UIImage(systemName: imgName), for: .normal)
         spoilerTagButton.configuration?.image = UIImage(systemName: imgName)
         spoilerTagButton.accessibilityValue = pendingSpoilerTags.isEmpty ? nil : "\(pendingSpoilerTags.count)"
-        // Обновить заливку/цвет, если состояние изменилось вне traitCollectionDidChange.
+
         applyMediaLibraryChromeToInputBar()
     }
 

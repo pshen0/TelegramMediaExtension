@@ -17,7 +17,6 @@ final class CommentCell: UITableViewCell {
 
         bubble.layer.cornerRadius = 16
         if #available(iOS 13.0, *) { bubble.layer.cornerCurve = .continuous }
-        /// На светлой теме `secondarySystemBackground` почти сливается с `systemGroupedBackground` экрана.
         bubble.backgroundColor = .secondarySystemGroupedBackground
         contentView.addSubview(bubble)
 

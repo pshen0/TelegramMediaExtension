@@ -1,6 +1,5 @@
 import UIKit
 
-/// Сетка постеров для текущего набора элементов (фильтры учитываются через `itemsProvider`).
 final class MediaLibraryGridViewController: UICollectionViewController {
     private static let reuseId = "gridCell"
 

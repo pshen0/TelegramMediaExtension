@@ -1,6 +1,5 @@
 import UIKit
 
-/// Поле «подпись слева — ввод справа» как в форме анонса (`NewAnnouncement`).
 final class CommunityTextFieldCell: UITableViewCell, UITextFieldDelegate {
     private let onChange: (String) -> Void
     private let titleView = UILabel()
@@ -61,7 +60,6 @@ final class CommunityTextFieldCell: UITableViewCell, UITextFieldDelegate {
     }
 }
 
-/// Многострочное поле как в описании анонса.
 final class CommunityTextViewCell: UITableViewCell, UITextViewDelegate {
     private let maxLength: Int
     private let onChange: (String) -> Void
@@ -130,7 +128,6 @@ final class CommunityTextViewCell: UITableViewCell, UITextViewDelegate {
     }
 }
 
-/// Аватар и кнопка смены фото для экрана редактирования сообщества.
 final class CommunityAvatarEditCell: UITableViewCell {
     static let reuseId = "CommunityAvatarEditCell"
 
@@ -142,7 +139,6 @@ final class CommunityAvatarEditCell: UITableViewCell {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
         selectionStyle = .none
 
-        avatarView.translatesAutoresizingMaskIntoConstraints = false
         avatarView.layer.cornerRadius = 50
         if #available(iOS 13.0, *) {
             avatarView.layer.cornerCurve = .continuous
@@ -151,7 +147,6 @@ final class CommunityAvatarEditCell: UITableViewCell {
         avatarView.contentMode = .scaleAspectFill
         avatarView.isUserInteractionEnabled = true
 
-        changePhotoButton.translatesAutoresizingMaskIntoConstraints = false
         changePhotoButton.setTitle("Сменить фото", for: .normal)
         changePhotoButton.titleLabel?.font = TMETheme.Fonts.body(15)
         changePhotoButton.setTitleColor(.label, for: .normal)
@@ -162,16 +157,14 @@ final class CommunityAvatarEditCell: UITableViewCell {
 
         avatarView.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(photoTapped)))
 
-        NSLayoutConstraint.activate([
-            avatarView.topAnchor.constraint(equalTo: contentView.layoutMarginsGuide.topAnchor, constant: 16),
-            avatarView.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
-            avatarView.widthAnchor.constraint(equalToConstant: 100),
-            avatarView.heightAnchor.constraint(equalToConstant: 100),
+        avatarView.pinTop(to: contentView.layoutMarginsGuide.topAnchor, 16)
+        avatarView.pinCenterX(to: contentView.centerXAnchor)
+        avatarView.setWidth(100)
+        avatarView.setHeight(100)
 
-            changePhotoButton.topAnchor.constraint(equalTo: avatarView.bottomAnchor, constant: 12),
-            changePhotoButton.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
-            changePhotoButton.bottomAnchor.constraint(equalTo: contentView.layoutMarginsGuide.bottomAnchor, constant: -16)
-        ])
+        changePhotoButton.pinTop(to: avatarView.bottomAnchor, 12)
+        changePhotoButton.pinCenterX(to: contentView.centerXAnchor)
+        changePhotoButton.pinBottom(to: contentView.layoutMarginsGuide.bottomAnchor, -16)
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }

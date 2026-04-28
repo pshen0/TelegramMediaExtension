@@ -5,10 +5,7 @@ struct CommunityChat: Identifiable, Codable, Equatable {
     var title: String
     var createdAt: Date
     var updatedAt: Date
-    /// JPEG в каталоге `CommunityStore.communityAvatarsDirectoryURL`.
     var avatarFileName: String?
-    /// Привязка к произведению из внешней базы (только TMDB, например `tmdb-movie-123` / `tmdb-tv-456`).
-    /// Если `nil` — сообщество «не тематическое», антиспойлеры к нему не применяются.
     var catalogSourceID: String?
 
     init(
@@ -38,22 +35,17 @@ enum CommunitySpoilerTagKind: String, Codable, Equatable {
     case seriesEpisode
 }
 
-/// Привязка поста к произведению + “граница спойлера” (таймкод / сезон‑серия).
 struct CommunitySpoilerTag: Codable, Equatable {
-    /// Внешний ID произведения (только TMDB): `tmdb-movie-123` / `tmdb-tv-456`.
     var catalogSourceID: String
-    /// Название для отображения в UI.
+
     var mediaTitle: String
     var kind: CommunitySpoilerTagKind
 
-    /// Для сериала.
     var season: Int?
     var episode: Int?
 
-    /// Для фильма: минуты от начала (например 45 == 00:45).
     var timeMinutes: Int?
 
-    /// Хештег, который добавляем в текст поста.
     var hashtag: String
 }
 
@@ -61,11 +53,8 @@ struct CommunityAnnouncement: Codable, Equatable {
     var title: String
     var date: Date
     var details: String?
-    /// JPEG-изображение (баннер/постер) в каталоге `CommunityStore.announcementImagesDirectoryURL`.
     var imageFileName: String?
-    /// Внешняя ссылка (опционально).
     var linkURL: String?
-    /// Точка на карте (опционально).
     var location: CommunityLocation?
 }
 
@@ -78,7 +67,7 @@ struct CommunityLocation: Codable, Equatable {
 struct CommunityComment: Identifiable, Codable, Equatable {
     var id: UUID
     var messageId: UUID
-    /// `nil` — комментарий к посту; иначе ответы в отдельном треде под этим комментарием.
+
     var threadParentCommentId: UUID?
     var text: String
     var createdAt: Date
@@ -103,14 +92,10 @@ struct CommunityMessage: Identifiable, Codable, Equatable {
     var communityId: UUID
     var kind: CommunityMessageKind
 
-    /// Для обоих форматов — основной текст.
     var text: String
 
-    /// Для анонса — структурированная часть.
     var announcement: CommunityAnnouncement?
 
-    /// Для поста — привязки к произведениям и “границы спойлера”.
-    /// До 5 тегов.
     var spoilerTags: [CommunitySpoilerTag]
 
     var createdAt: Date

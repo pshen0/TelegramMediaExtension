@@ -1,6 +1,5 @@
 import UIKit
 
-/// Ячейка каталога: постер, название, статус, чипы хэштегов (ТЗ 4.1.5).
 final class MediaLibraryItemCell: UITableViewCell {
     static let reuseIdentifier = "MediaLibraryItemCell"
 

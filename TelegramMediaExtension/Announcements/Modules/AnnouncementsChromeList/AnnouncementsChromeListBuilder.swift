@@ -2,7 +2,6 @@ import UIKit
 
 enum AnnouncementsChromeListBuilder {
 
-    /// «Мои анонсы»: поиск только по названию.
     static func myAnnouncements() -> AnnouncementsChromeListViewController {
         build(
             listTitle: "Мои анонсы",
@@ -12,7 +11,6 @@ enum AnnouncementsChromeListBuilder {
         )
     }
 
-    /// Раздел «Анонсы» внутри медиатеки.
     static func mediaLibraryAnnouncements() -> AnnouncementsChromeListViewController {
         build(
             listTitle: "Анонсы",

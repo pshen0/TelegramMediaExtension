@@ -5,7 +5,6 @@ private enum TabPill {
     static let pillFillTag = 9_090
 }
 
-/// Горизонтально прокручиваемые вкладки: выбранная — сплошная подложка, остальные — прозрачные подписи.
 final class MediaLibraryFolderTabsView: UIView {
     var selectedIndex: Int = 0 {
         didSet { updateSelection(animated: oldValue != selectedIndex) }

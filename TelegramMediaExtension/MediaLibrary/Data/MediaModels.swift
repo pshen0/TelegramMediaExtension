@@ -31,7 +31,6 @@ enum MediaWatchStatus: String, Codable, CaseIterable {
         }
     }
 
-    /// Короткие подписи для сегментов в стиле папок в чатах (влезают в `UISegmentedControl`).
     var folderTabTitle: String {
         switch self {
         case .planned: return "В планах"
@@ -45,7 +44,6 @@ enum MediaWatchStatus: String, Codable, CaseIterable {
 struct MediaProgress: Codable, Equatable {
     var current: Int?
     var total: Int?
-    /// Для сериалов: номер сезона (опционально).
     var season: Int?
 
     init(current: Int? = nil, total: Int? = nil, season: Int? = nil) {
@@ -54,7 +52,6 @@ struct MediaProgress: Codable, Equatable {
         self.season = season
     }
 
-    /// «Текущий» не больше «Всего», если задано и то и другое.
     mutating func clampCurrentToTotal() {
         guard let t = total, t >= 0 else { return }
         if let c = current {
@@ -62,7 +59,6 @@ struct MediaProgress: Codable, Equatable {
         }
     }
 
-    /// Оба значения заданы и «всего» меньше «текущего» — сохранение формы блокируем.
     var hasTotalLessThanCurrent: Bool {
         guard let t = total, let c = current else { return false }
         return t < c
@@ -104,17 +100,11 @@ struct MediaItem: Identifiable, Equatable {
     var isFavorite: Bool
     var year: Int?
     var genre: String?
-    /// 0…5 (условные «звёзды»), опционально.
     var rating: Double?
     var synopsis: String?
-    /// Имя файла обложки в каталоге `MediaLibraryStore.coversDirectory` (JPEG).
     var coverFileName: String?
-    /// Идентификатор во внешнем каталоге, если объект добавлен из поиска.
     var catalogSourceID: String?
-    /// Персональная защита от спойлеров для этого объекта (используем только если `catalogSourceID` из TMDB).
-    /// `true` по умолчанию: чтобы новые TMDB-объекты сразу были «без спойлеров».
     var spoilersProtectionEnabled: Bool
-    /// `false` — запись из каталога; `true` — создана вручную.
     var isManuallyCreated: Bool
     var createdAt: Date
     var updatedAt: Date

@@ -19,7 +19,6 @@ final class SavedAnnouncementDetailInteractor: SavedAnnouncementDetailBusinessLo
     private let presenter: SavedAnnouncementDetailPresentationLogic
     private let store = CommunityStore.shared
 
-    /// Для синхронизации загрузки баннера с актуальной записью в `CommunityStore`.
     let announcementId: UUID
 
     weak var router: SavedAnnouncementDetailRoutingLogic?

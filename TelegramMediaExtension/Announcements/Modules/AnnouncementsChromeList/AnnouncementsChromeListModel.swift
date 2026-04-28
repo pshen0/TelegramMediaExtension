@@ -1,6 +1,5 @@
 import Foundation
 
-/// Request / Response / ViewModel для экрана списка анонсов (SVIP).
 enum AnnouncementsChromeListModel {
 
     enum SearchScope {

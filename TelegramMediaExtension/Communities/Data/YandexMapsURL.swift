@@ -1,9 +1,7 @@
 import Foundation
 
 enum YandexMapsURL {
-    /// Точка на карте: `pt=lon,lat` (долгота, широта).
     static func point(latitude: Double, longitude: Double) -> URL {
-        // Универсальная ссылка: откроет приложение Яндекс.Карт (если есть) или веб.
         var c = URLComponents()
         c.scheme = "https"
         c.host = "yandex.ru"

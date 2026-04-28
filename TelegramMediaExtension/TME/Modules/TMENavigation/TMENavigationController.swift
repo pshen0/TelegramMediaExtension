@@ -1,8 +1,6 @@
 import UIKit
 
 final class TMENavigationController: UINavigationController {
-
-    /// Вызывается после любого изменения стека (push/pop/replace), чтобы обновить таб-бар у `TMETelegramTabBarController`.
     var onNavigationStackDidChange: (() -> Void)?
 
     override func viewDidLoad() {

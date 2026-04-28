@@ -1,6 +1,6 @@
 import Foundation
 
-/// Request / Response / ViewModel для карточки сохранённого анонса (SVIP).
+//MARK: - Request / Response / ViewModel для карточки сохранённого анонса (SVIP).
 enum SavedAnnouncementDetailModel {
 
     enum ViewDidLoad {
@@ -13,7 +13,6 @@ enum SavedAnnouncementDetailModel {
 
     enum RefreshDisplay {
         struct Request {
-            /// Совпадает с логикой баннера: есть JPEG и ненулевая высота.
             let heroStripVisible: Bool
         }
     }
@@ -43,7 +42,6 @@ enum SavedAnnouncementDetailModel {
 
         struct ViewModel {
             let heroTitle: String
-            /// Градиент и заголовок на баннере (при отсутствии картинки — только текстовый заголовок в контенте).
             let showHeroChrome: Bool
             let rows: [ContentRow]
         }

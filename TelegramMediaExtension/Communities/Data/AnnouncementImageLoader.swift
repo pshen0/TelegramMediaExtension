@@ -1,7 +1,6 @@
 import Foundation
 import UIKit
 
-/// Loads and caches announcement images from backend (/media/announcement-images/<fileName>).
 @MainActor
 final class AnnouncementImageLoader {
     static let shared = AnnouncementImageLoader()
@@ -23,14 +22,12 @@ final class AnnouncementImageLoader {
             return
         }
 
-        // Deduplicate concurrent loads.
         if inFlight[fileName] != nil {
             inFlight[fileName]?.append(completion)
             return
         }
         inFlight[fileName] = [completion]
 
-        // Compute actor-isolated URLs on MainActor before detaching.
         let localURL = CommunityStore.announcementImageURL(fileName: fileName)
         let remoteURL = BackendAuthStore.shared.baseURL
             .appendingPathComponent("media", isDirectory: true)
@@ -38,7 +35,6 @@ final class AnnouncementImageLoader {
             .appendingPathComponent(fileName)
 
         Task.detached { [fileName, localURL, remoteURL] in
-            // 1) Try disk cache.
             if let url = localURL,
                let data = try? Data(contentsOf: url),
                let img = UIImage(data: data) {
@@ -49,7 +45,6 @@ final class AnnouncementImageLoader {
                 return
             }
 
-            // 2) Download from backend media.
             do {
                 let (data, _) = try await URLSession.shared.data(from: remoteURL)
                 let img = UIImage(data: data)
