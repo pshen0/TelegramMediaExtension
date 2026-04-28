@@ -18,7 +18,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         let window = UIWindow(windowScene: windowScene)
         window.tintColor = TMETheme.Colors.accent
 
-        let root = TMETelegramTabBarController()
+        let root = TMETabBarController()
         window.rootViewController = root
         window.makeKeyAndVisible()
         self.window = window

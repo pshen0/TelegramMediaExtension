@@ -1,7 +1,7 @@
 import UIKit
 
 /// Корень приложения: `UITabBarController` с системным таб-баром (Контакты нельзя открыть, Чаты, Настройки).
-final class TMETelegramTabBarController: UITabBarController, UITabBarControllerDelegate {
+final class TMETabBarController: UITabBarController, UITabBarControllerDelegate {
 
     /// Вкладка «Контакты» — только декоративная, переход на неё блокируется в `shouldSelect`.
     private var contactsNavigationController: UINavigationController!
