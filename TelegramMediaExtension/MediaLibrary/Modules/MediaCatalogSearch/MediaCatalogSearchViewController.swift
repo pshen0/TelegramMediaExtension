@@ -2,13 +2,31 @@ import UIKit
 
 /// Вкладка «Поиск в базах»: строка поиска + результаты (заглушка API).
 final class MediaCatalogSearchViewController: UITableViewController, UISearchBarDelegate {
+    private let interactor: MediaCatalogSearchBusinessLogic
     weak var addFlowCoordinator: AddToMediaLibraryViewController?
     var onSelectCandidate: ((MediaCatalogCandidate) -> Void)?
 
     private let searchBar = UISearchBar()
-    private var results: [MediaCatalogCandidate] = []
-    private var searchTask: Task<Void, Never>?
+    private var rows: [MediaCatalogSearchModel.List.Row] = []
     private let keyboardDismissOnTapOutside = MediaLibraryKeyboardDismissOnTapOutside()
+
+    init(style: UITableView.Style, interactor: MediaCatalogSearchBusinessLogic) {
+        self.interactor = interactor
+        super.init(style: style)
+    }
+
+    override init(style: UITableView.Style) {
+        let presenter = MediaCatalogSearchPresenter()
+        let interactor = MediaCatalogSearchInteractor(presenter: presenter)
+        self.interactor = interactor
+        super.init(style: style)
+        presenter.view = self
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -20,6 +38,8 @@ final class MediaCatalogSearchViewController: UITableViewController, UISearchBar
         searchBar.delegate = self
         searchBar.searchBarStyle = .minimal
         tableView.tableHeaderView = searchBar
+
+        interactor.viewDidLoad(.init())
     }
 
     override func viewDidLayoutSubviews() {
@@ -34,15 +54,15 @@ final class MediaCatalogSearchViewController: UITableViewController, UISearchBar
     }
 
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        results.count
+        rows.count
     }
 
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "cand", for: indexPath)
-        let c = results[indexPath.row]
+        let row = rows[indexPath.row]
         var conf = UIListContentConfiguration.subtitleCell()
-        conf.text = c.title
-        conf.secondaryText = [c.kind.title, c.year.map(String.init), c.genre].compactMap { $0 }.joined(separator: " · ")
+        conf.text = row.candidate.title
+        conf.secondaryText = row.secondaryText
         conf.secondaryTextProperties.numberOfLines = 2
         cell.contentConfiguration = conf
         cell.accessoryType = .disclosureIndicator
@@ -51,32 +71,30 @@ final class MediaCatalogSearchViewController: UITableViewController, UISearchBar
 
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
-        let c = results[indexPath.row]
+        let c = rows[indexPath.row].candidate
         if let onSelectCandidate {
             onSelectCandidate(c)
             return
         }
-        let preview = MediaCatalogPreviewViewController(candidate: c)
+        let preview = MediaCatalogPreviewBuilder.build(candidate: c)
         preview.addFlowCoordinator = addFlowCoordinator
         navigationController?.pushViewController(preview, animated: true)
     }
 
     func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
-        searchTask?.cancel()
-        let q = searchText
-        searchTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 280_000_000)
-            guard !Task.isCancelled else { return }
-            let list = await MediaCatalogSearchService.search(query: q)
-            guard !Task.isCancelled else { return }
-            await MainActor.run {
-                self?.results = list
-                self?.tableView.reloadData()
-            }
-        }
+        interactor.queryChanged(.init(query: searchText))
     }
 
     func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
         searchBar.resignFirstResponder()
+    }
+}
+
+// MARK: - MediaCatalogSearchDisplayLogic
+
+extension MediaCatalogSearchViewController: MediaCatalogSearchDisplayLogic {
+    func displayList(_ viewModel: MediaCatalogSearchModel.List.ViewModel) {
+        rows = viewModel.rows
+        tableView.reloadData()
     }
 }

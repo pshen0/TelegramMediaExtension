@@ -1,30 +1,9 @@
-import Combine
 import UIKit
 
 /// Список каталога: шапка в стиле профиля (сплошной цвет), UISearchBar, вкладки.
 final class MediaLibraryListViewController: UITableViewController, UISearchBarDelegate {
-    private let store = MediaLibraryStore.shared
-    private var cancellables = Set<AnyCancellable>()
-
+    private let interactor: MediaLibraryListBusinessLogic
     private var filteredItems: [MediaItem] = []
-    private var query: String = ""
-    private var statusFilter: MediaWatchStatus?
-    private var kindFilter: MediaItemKind?
-    private var favoritesOnly: Bool = false
-
-    private enum LibrarySort {
-        case updatedDesc
-        case titleAsc
-
-        var title: String {
-            switch self {
-            case .updatedDesc: return "Сначала новые по дате"
-            case .titleAsc: return "По названию (А–Я)"
-            }
-        }
-    }
-
-    private var librarySort: LibrarySort = .updatedDesc
 
     private var overflowBarButton: UIBarButtonItem!
 
@@ -38,8 +17,17 @@ final class MediaLibraryListViewController: UITableViewController, UISearchBarDe
     private var bannerColorObserver: NSObjectProtocol?
     private let keyboardDismissOnTapOutside = MediaLibraryKeyboardDismissOnTapOutside()
 
-    init() {
+    init(interactor: MediaLibraryListBusinessLogic) {
+        self.interactor = interactor
         super.init(style: .plain)
+    }
+
+    convenience init() {
+        let presenter = MediaLibraryListPresenter()
+        let interactor = MediaLibraryListInteractor(presenter: presenter)
+        self.init(interactor: interactor)
+        presenter.view = self
+        interactor.router = self
     }
 
     required init?(coder: NSCoder) {
@@ -85,13 +73,13 @@ final class MediaLibraryListViewController: UITableViewController, UISearchBarDe
 
         chromeHeader.searchBar.delegate = self
         chromeHeader.onBannerTap = { [weak self] in
-            self?.presentBannerColorPicker()
+            self?.interactor.bannerTapped(.init())
         }
         chromeHeader.onSearchDismiss = { [weak self] in
             self?.dismissSearchKeyboardAndClear()
         }
         chromeHeader.folderTabs.onSelectionChange = { [weak self] index in
-            self?.applyTabIndex(index)
+            self?.interactor.applyTabIndex(.init(index: index))
         }
         tableView.tableHeaderView = chromeHeader
 
@@ -103,14 +91,7 @@ final class MediaLibraryListViewController: UITableViewController, UISearchBarDe
             self?.applyBannerChromeColors()
         }
 
-        bindStore()
-        applyFilters()
-
-        Task { [weak self] in
-            guard let self else { return }
-            await self.store.loadIfNeededAsync()
-            self.applyFilters()
-        }
+        interactor.viewDidLoad(.init())
     }
 
     deinit {
@@ -127,7 +108,7 @@ final class MediaLibraryListViewController: UITableViewController, UISearchBarDe
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         applyChromeNavigationAppearance()
-        applyFilters()
+        interactor.viewWillAppear(.init())
     }
 
     override func viewWillDisappear(_ animated: Bool) {
@@ -202,7 +183,7 @@ final class MediaLibraryListViewController: UITableViewController, UISearchBarDe
     }
 
     private func presentBannerColorPicker() {
-        let picker = MediaLibraryBannerColorPickerViewController()
+        let picker = MediaLibraryBannerColorPickerBuilder.build()
         picker.onFinish = { [weak self] in
             self?.applyBannerChromeColors()
         }
@@ -315,20 +296,10 @@ final class MediaLibraryListViewController: UITableViewController, UISearchBarDe
         emptyOverlay.headerBottomY = max(0, inOverlay.y)
     }
 
-    private func bindStore() {
-        store.$items
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                self?.applyFilters()
-            }
-            .store(in: &cancellables)
-    }
-
     // MARK: - UISearchBarDelegate
 
     func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
-        query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        applyFilters()
+        interactor.updateSearchQuery(.init(query: searchText))
     }
 
     func searchBarTextDidBeginEditing(_ searchBar: UISearchBar) {
@@ -349,86 +320,17 @@ final class MediaLibraryListViewController: UITableViewController, UISearchBarDe
 
     private func dismissSearchKeyboardAndClear() {
         chromeHeader.searchBar.text = ""
-        query = ""
         chromeHeader.searchBar.searchTextField.resignFirstResponder()
         chromeHeader.setShowsSearchDismiss(false, animated: true)
-        applyFilters()
-    }
-
-    private func applyTabIndex(_ index: Int) {
-        if index <= 0 {
-            favoritesOnly = false
-            statusFilter = nil
-        } else if index == 1 {
-            favoritesOnly = true
-            statusFilter = nil
-        } else {
-            favoritesOnly = false
-            statusFilter = MediaWatchStatus.allCases[index - 2]
-        }
-        applyFilters()
+        interactor.clearSearch(.init())
     }
 
     @objc private func addTapped() {
-        navigationController?.pushViewController(AddToMediaLibraryViewController(), animated: true)
+        interactor.addTapped(.init())
     }
 
     @objc private func doneTapped() {
-        dismiss(animated: true)
-    }
-
-    private func applyFilters() {
-        let items = store.items
-        let q = query.lowercased()
-
-        var result = items
-
-        if favoritesOnly {
-            result = result.filter(\.isFavorite)
-        }
-
-        if let statusFilter {
-            result = result.filter { $0.status == statusFilter }
-        }
-
-        if let kindFilter {
-            result = result.filter { $0.kind == kindFilter }
-        }
-
-        if !q.isEmpty {
-            let hashtagQuery: String? = {
-                if q.hasPrefix("#") { return String(q.dropFirst()) }
-                return nil
-            }()
-
-            result = result.filter { item in
-                if item.title.lowercased().contains(q) { return true }
-                if let hashtagQuery {
-                    return item.hashtags.contains(where: { $0.lowercased().contains(hashtagQuery) })
-                }
-                return item.hashtags.contains(where: { ("#" + $0).lowercased().contains(q) })
-            }
-        }
-
-        switch librarySort {
-        case .updatedDesc:
-            result.sort { $0.updatedAt > $1.updatedAt }
-        case .titleAsc:
-            result.sort { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
-        }
-
-        filteredItems = result
-        tableView.reloadData()
-        updateEmptyState()
-    }
-
-    private func updateEmptyState() {
-        let empty = filteredItems.isEmpty
-        emptyOverlay.isHidden = !empty
-        guard empty else { return }
-        let total = store.totalItemCount()
-        let noFilters = query.isEmpty && statusFilter == nil && kindFilter == nil && favoritesOnly == false
-        emptyOverlay.mode = (total == 0 && noFilters) ? .libraryEmpty : .filteredEmpty
+        interactor.doneTapped(.init())
     }
 
     private func buildOverflowMenu() -> UIMenu {
@@ -439,7 +341,7 @@ final class MediaLibraryListViewController: UITableViewController, UISearchBarDe
             self?.presentSortSheet()
         }
         let grid = UIAction(title: "Сетка", image: UIImage(systemName: "square.grid.2x2")) { [weak self] _ in
-            self?.openGrid()
+            self?.interactor.openGrid(.init())
         }
         let search = UIAction(title: "Найти в списке", image: UIImage(systemName: "magnifyingglass")) { [weak self] _ in
             self?.chromeHeader.searchBar.becomeFirstResponder()
@@ -453,13 +355,11 @@ final class MediaLibraryListViewController: UITableViewController, UISearchBarDe
     private func presentKindFilterSheet() {
         let ac = UIAlertController(title: "Тип контента", message: nil, preferredStyle: .actionSheet)
         ac.addAction(UIAlertAction(title: "Все типы", style: .default) { [weak self] _ in
-            self?.kindFilter = nil
-            self?.applyFilters()
+            self?.interactor.setKindFilter(.init(kind: nil))
         })
         for k in MediaItemKind.allCases {
             ac.addAction(UIAlertAction(title: k.title, style: .default) { [weak self] _ in
-                self?.kindFilter = k
-                self?.applyFilters()
+                self?.interactor.setKindFilter(.init(kind: k))
             })
         }
         ac.addAction(UIAlertAction(title: "Отмена", style: .cancel))
@@ -469,22 +369,18 @@ final class MediaLibraryListViewController: UITableViewController, UISearchBarDe
 
     private func presentSortSheet() {
         let ac = UIAlertController(title: "Сортировка", message: nil, preferredStyle: .actionSheet)
-        for option: LibrarySort in [.updatedDesc, .titleAsc] {
-            let title = librarySort == option ? "✓ \(option.title)" : option.title
+        let options: [(MediaLibraryListModel.Sort, String)] = [
+            (.updatedDesc, "Сначала новые по дате"),
+            (.titleAsc, "По названию (А–Я)")
+        ]
+        for (sort, title) in options {
             ac.addAction(UIAlertAction(title: title, style: .default) { [weak self] _ in
-                self?.librarySort = option
-                self?.applyFilters()
+                self?.interactor.setSort(.init(sort: sort))
             })
         }
         ac.addAction(UIAlertAction(title: "Отмена", style: .cancel))
         ac.popoverPresentationController?.barButtonItem = overflowBarButton
         present(ac, animated: true)
-    }
-
-    private func openGrid() {
-        let grid = MediaLibraryGridViewController()
-        grid.itemsProvider = { [weak self] in self?.filteredItems ?? [] }
-        navigationController?.pushViewController(grid, animated: true)
     }
 
     override func numberOfSections(in tableView: UITableView) -> Int { 1 }
@@ -509,16 +405,65 @@ final class MediaLibraryListViewController: UITableViewController, UISearchBarDe
 
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
-        let item = filteredItems[indexPath.row]
-        navigationController?.pushViewController(MediaItemDetailViewController(item: item), animated: true)
+        interactor.selectItem(.init(index: indexPath.row))
     }
 
     override func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
         let item = filteredItems[indexPath.row]
         let delete = UIContextualAction(style: .destructive, title: "Удалить") { [weak self] _, _, done in
-            self?.store.delete(id: item.id)
+            self?.interactor.deleteItem(.init(id: item.id))
             done(true)
         }
         return UISwipeActionsConfiguration(actions: [delete])
+    }
+}
+
+// MARK: - MediaLibraryListDisplayLogic
+
+extension MediaLibraryListViewController: MediaLibraryListDisplayLogic {
+    func displayList(_ viewModel: MediaLibraryListModel.List.ViewModel) {
+        filteredItems = viewModel.items
+        tableView.reloadData()
+        emptyOverlay.isHidden = !viewModel.isEmpty
+        if viewModel.isEmpty {
+            emptyOverlay.mode = viewModel.emptyMode
+        }
+    }
+}
+
+// MARK: - MediaLibraryListRoutingLogic
+
+extension MediaLibraryListViewController: MediaLibraryListRoutingLogic {
+    func routeToBannerColorPicker() {
+        presentBannerColorPicker()
+    }
+
+    func routeToAddFlow() {
+        navigationController?.pushViewController(AddToMediaLibraryBuilder.build(), animated: true)
+    }
+
+    func routeToGrid(itemsProvider: @escaping () -> [MediaItem]) {
+        let grid = MediaLibraryGridBuilder.build(itemsProvider: itemsProvider)
+        navigationController?.pushViewController(grid, animated: true)
+    }
+
+    func routeToAnnouncements() {
+        navigationController?.pushViewController(AnnouncementsChromeListBuilder.mediaLibraryAnnouncements(), animated: true)
+    }
+
+    func routeToItemDetail(item: MediaItem) {
+        navigationController?.pushViewController(MediaItemDetailBuilder.build(item: item), animated: true)
+    }
+
+    func routeDismiss() {
+        dismiss(animated: true)
+    }
+
+    func routeFocusSearch() {
+        chromeHeader.searchBar.becomeFirstResponder()
+    }
+
+    func routeUpdateOverflowMenu() {
+        overflowBarButton.menu = buildOverflowMenu()
     }
 }

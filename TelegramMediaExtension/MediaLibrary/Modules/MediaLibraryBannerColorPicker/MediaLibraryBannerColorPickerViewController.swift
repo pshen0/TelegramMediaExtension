@@ -3,6 +3,7 @@ import UIKit
 /// Два горизонтальных ряда по 8 круглых образцов; палитра по центру между заголовком и нижним краем.
 final class MediaLibraryBannerColorPickerViewController: UIViewController {
     var onFinish: (() -> Void)?
+    private let interactor: MediaLibraryBannerColorPickerBusinessLogic
 
     private let rowsStack = UIStackView()
     private let topSpacer = UIView()
@@ -31,6 +32,24 @@ final class MediaLibraryBannerColorPickerViewController: UIViewController {
     private static let chipSpacing: CGFloat = 8
     private static let horizontalMargin: CGFloat = 12
 
+    init(interactor: MediaLibraryBannerColorPickerBusinessLogic) {
+        self.interactor = interactor
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    convenience init() {
+        let presenter = MediaLibraryBannerColorPickerPresenter()
+        let interactor = MediaLibraryBannerColorPickerInteractor(presenter: presenter)
+        self.init(interactor: interactor)
+        presenter.view = self
+        interactor.router = self
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .systemGroupedBackground
@@ -49,14 +68,11 @@ final class MediaLibraryBannerColorPickerViewController: UIViewController {
             right: Self.horizontalMargin
         )
 
-        topSpacer.translatesAutoresizingMaskIntoConstraints = false
-        bottomSpacer.translatesAutoresizingMaskIntoConstraints = false
         topSpacer.isUserInteractionEnabled = false
         bottomSpacer.isUserInteractionEnabled = false
 
         rowsStack.axis = .vertical
         rowsStack.spacing = Self.rowSpacing
-        rowsStack.translatesAutoresizingMaskIntoConstraints = false
 
         rowsStack.addArrangedSubview(makeColorRow(indices: 0..<8))
         rowsStack.addArrangedSubview(makeColorRow(indices: 8..<16))
@@ -65,22 +81,22 @@ final class MediaLibraryBannerColorPickerViewController: UIViewController {
         view.addSubview(rowsStack)
         view.addSubview(bottomSpacer)
 
-        NSLayoutConstraint.activate([
-            topSpacer.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            topSpacer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            topSpacer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            topSpacer.bottomAnchor.constraint(equalTo: rowsStack.topAnchor),
+        topSpacer.pinTop(to: view.safeAreaLayoutGuide.topAnchor)
+        topSpacer.pinLeft(to: view)
+        topSpacer.pinRight(to: view)
+        topSpacer.pinBottom(to: rowsStack.topAnchor)
 
-            rowsStack.leadingAnchor.constraint(equalTo: view.layoutMarginsGuide.leadingAnchor),
-            rowsStack.trailingAnchor.constraint(equalTo: view.layoutMarginsGuide.trailingAnchor),
+        rowsStack.pinLeft(to: view.layoutMarginsGuide.leadingAnchor)
+        rowsStack.pinRight(to: view.layoutMarginsGuide.trailingAnchor)
 
-            bottomSpacer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            bottomSpacer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            bottomSpacer.topAnchor.constraint(equalTo: rowsStack.bottomAnchor),
-            bottomSpacer.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        bottomSpacer.pinLeft(to: view)
+        bottomSpacer.pinRight(to: view)
+        bottomSpacer.pinTop(to: rowsStack.bottomAnchor)
+        bottomSpacer.pinBottom(to: view.bottomAnchor)
 
-            topSpacer.heightAnchor.constraint(equalTo: bottomSpacer.heightAnchor)
-        ])
+        topSpacer.pinHeight(to: bottomSpacer.heightAnchor)
+
+        interactor.viewDidLoad(.init())
     }
 
     private func makeColorRow(indices: Range<Int>) -> UIStackView {
@@ -100,9 +116,8 @@ final class MediaLibraryBannerColorPickerViewController: UIViewController {
             btn.clipsToBounds = true
             btn.accessibilityLabel = "Цвет \(i + 1)"
             btn.addTarget(self, action: #selector(colorTapped(_:)), for: .touchUpInside)
-            btn.translatesAutoresizingMaskIntoConstraints = false
             row.addArrangedSubview(btn)
-            btn.heightAnchor.constraint(equalTo: btn.widthAnchor, multiplier: 1).isActive = true
+            btn.pinHeight(to: btn.widthAnchor)
         }
         return row
     }
@@ -119,10 +134,7 @@ final class MediaLibraryBannerColorPickerViewController: UIViewController {
     }
 
     @objc private func colorTapped(_ sender: UIButton) {
-        let idx = sender.tag
-        guard idx >= 0, idx < Self.palette.count else { return }
-        MediaLibraryHeaderBannerColor.setCustom(Self.palette[idx])
-        finishAndDismiss()
+        interactor.selectColor(.init(index: sender.tag))
     }
 
     @objc private func closeTapped() {
@@ -132,5 +144,22 @@ final class MediaLibraryBannerColorPickerViewController: UIViewController {
     private func finishAndDismiss() {
         onFinish?()
         dismiss(animated: true)
+    }
+}
+
+// MARK: - MediaLibraryBannerColorPickerDisplayLogic
+
+extension MediaLibraryBannerColorPickerViewController: MediaLibraryBannerColorPickerDisplayLogic {
+    func displayPalette(_ viewModel: MediaLibraryBannerColorPickerModel.Palette.ViewModel) {
+        // Палитра статическая, рендерится в viewDidLoad. Метод оставлен для SVIP-формы.
+        _ = viewModel
+    }
+}
+
+// MARK: - MediaLibraryBannerColorPickerRoutingLogic
+
+extension MediaLibraryBannerColorPickerViewController: MediaLibraryBannerColorPickerRoutingLogic {
+    func routeFinishAndDismiss() {
+        finishAndDismiss()
     }
 }

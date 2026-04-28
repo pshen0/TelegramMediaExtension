@@ -17,6 +17,7 @@ final class MediaItemEditorViewController: UITableViewController {
         }
     }
 
+    private let interactor: MediaItemEditorBusinessLogic
     private let mode: Mode
     private let onSave: (MediaItem) -> Void
 
@@ -34,7 +35,8 @@ final class MediaItemEditorViewController: UITableViewController {
         case delete
     }
 
-    init(mode: Mode, onSave: @escaping (MediaItem) -> Void) {
+    init(interactor: MediaItemEditorBusinessLogic, mode: Mode, onSave: @escaping (MediaItem) -> Void) {
+        self.interactor = interactor
         self.mode = mode
         self.onSave = onSave
 
@@ -50,12 +52,22 @@ final class MediaItemEditorViewController: UITableViewController {
         super.init(style: .insetGrouped)
     }
 
+    convenience init(mode: Mode, onSave: @escaping (MediaItem) -> Void) {
+        let presenter = MediaItemEditorPresenter()
+        let interactor = MediaItemEditorInteractor(presenter: presenter)
+        self.init(interactor: interactor, mode: mode, onSave: onSave)
+        presenter.view = self
+        interactor.router = self
+    }
+
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     override func viewDidLoad() {
         super.viewDidLoad()
 
-        title = mode.navigationTitle.isEmpty ? item.title : mode.navigationTitle
+        interactor.build(.init(mode: mode))
+        interactor.viewDidLoad(.init())
+
         tableView.backgroundColor = TMETheme.Colors.groupedBackground
         tableView.rowHeight = UITableView.automaticDimension
         tableView.estimatedRowHeight = 52
@@ -89,25 +101,7 @@ final class MediaItemEditorViewController: UITableViewController {
     }
 
     @objc private func saveTapped() {
-        let title = item.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        if title.isEmpty {
-            let alert = UIAlertController(title: "Введите название", message: nil, preferredStyle: .alert)
-            alert.addAction(UIAlertAction(title: "Ок", style: .default))
-            present(alert, animated: true)
-            return
-        }
-        if item.progress.hasTotalLessThanCurrent {
-            let alert = UIAlertController(
-                title: "Прогресс",
-                message: "«Всего» не может быть меньше текущего значения. Исправьте поля и попробуйте снова.",
-                preferredStyle: .alert
-            )
-            alert.addAction(UIAlertAction(title: "Ок", style: .default))
-            present(alert, animated: true)
-            return
-        }
-        item.title = title
-        onSave(item)
+        interactor.saveTapped(.init())
     }
 
     override func numberOfSections(in tableView: UITableView) -> Int {
@@ -187,7 +181,7 @@ final class MediaItemEditorViewController: UITableViewController {
                     placeholder: "Введите название",
                     keyboard: .default
                 ) { [weak self] text in
-                    self?.item.title = text
+                    self?.interactor.updateField(.init(field: .title(text)))
                 }
             case 1:
                 return makeDisclosureCell(title: "Тип", value: item.kind.title)
@@ -198,12 +192,12 @@ final class MediaItemEditorViewController: UITableViewController {
             switch indexPath.row {
             case 0:
                 return makeIntCell(title: "Год", value: item.year) { [weak self] v in
-                    self?.item.year = v
+                    self?.interactor.updateField(.init(field: .year(v)))
                 }
             case 1:
                 return makeTextFieldCell(title: "Жанр", value: item.genre ?? "", placeholder: "Драма, Sci-Fi…", keyboard: .default) { [weak self] t in
                     let s = t.trimmingCharacters(in: .whitespacesAndNewlines)
-                    self?.item.genre = s.isEmpty ? nil : s
+                    self?.interactor.updateField(.init(field: .genre(s.isEmpty ? nil : s)))
                 }
             case 2:
                 return makeTextFieldCell(
@@ -214,9 +208,9 @@ final class MediaItemEditorViewController: UITableViewController {
                 ) { [weak self] text in
                     let t = text.replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespacesAndNewlines)
                     if t.isEmpty {
-                        self?.item.rating = nil
+                        self?.interactor.updateField(.init(field: .rating(nil)))
                     } else if let v = Double(t) {
-                        self?.item.rating = min(5, max(0, v))
+                        self?.interactor.updateField(.init(field: .rating(min(5, max(0, v)))))
                     }
                 }
             case 3:
@@ -225,7 +219,7 @@ final class MediaItemEditorViewController: UITableViewController {
                     placeholder: "Краткое описание…",
                     maxLength: 4000
                 ) { [weak self] text in
-                    self?.item.synopsis = text.isEmpty ? nil : text
+                    self?.interactor.updateField(.init(field: .synopsis(text.isEmpty ? nil : text)))
                 }
             default:
                 return makeDisclosureCell(title: "Обложка", value: item.coverFileName != nil ? "Загружена" : "Выбрать…")
@@ -235,24 +229,24 @@ final class MediaItemEditorViewController: UITableViewController {
                 switch indexPath.row {
                 case 0:
                     return makeIntCell(title: "Сезон", value: item.progress.season) { [weak self] v in
-                        self?.item.progress.season = v
+                        self?.interactor.updateField(.init(field: .progressSeason(v)))
                     }
                 case 1:
                     return makeIntCell(title: "Эпизод (тек.)", value: item.progress.current) { [weak self] v in
-                        self?.item.progress.current = v
+                        self?.interactor.updateField(.init(field: .progressCurrent(v)))
                     }
                 default:
                     return makeIntCell(title: "Эпизодов (всего)", value: item.progress.total) { [weak self] v in
-                        self?.item.progress.total = v
+                        self?.interactor.updateField(.init(field: .progressTotal(v)))
                     }
                 }
             } else if indexPath.row == 0 {
                 return makeIntCell(title: "Текущий", value: item.progress.current) { [weak self] v in
-                    self?.item.progress.current = v
+                    self?.interactor.updateField(.init(field: .progressCurrent(v)))
                 }
             } else {
                 return makeIntCell(title: "Всего", value: item.progress.total) { [weak self] v in
-                    self?.item.progress.total = v
+                    self?.interactor.updateField(.init(field: .progressTotal(v)))
                 }
             }
         case .spoilers:
@@ -262,14 +256,13 @@ final class MediaItemEditorViewController: UITableViewController {
             let sw = UISwitch()
             sw.isOn = item.spoilersProtectionEnabled
             sw.addAction(UIAction { [weak self] _ in
-                guard let self else { return }
-                self.item.spoilersProtectionEnabled = sw.isOn
+                self?.interactor.updateField(.init(field: .spoilersProtectionEnabled(sw.isOn)))
             }, for: .valueChanged)
             cell.accessoryView = sw
             return cell
         case .notes:
             return makeTextViewCell(text: item.notes, placeholder: "Добавьте заметку или рецензию...") { [weak self] text in
-                self?.item.notes = text
+                self?.interactor.updateField(.init(field: .notes(text)))
             }
         case .hashtags:
             return makeTextFieldCell(
@@ -278,7 +271,7 @@ final class MediaItemEditorViewController: UITableViewController {
                 placeholder: "#tag1, #tag2",
                 keyboard: .default
             ) { [weak self] text in
-                self?.item.hashtags = MediaHashtag.parseList(text)
+                self?.interactor.updateField(.init(field: .hashtags(MediaHashtag.parseList(text))))
             }
         case .delete:
             let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
@@ -314,8 +307,7 @@ final class MediaItemEditorViewController: UITableViewController {
         let alert = UIAlertController(title: "Удалить?", message: existing.title, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "Отмена", style: .cancel))
         alert.addAction(UIAlertAction(title: "Удалить", style: .destructive) { [weak self] _ in
-            MediaLibraryStore.shared.delete(id: existing.id)
-            self?.navigationController?.popViewController(animated: true)
+            self?.interactor.deleteConfirmed(.init())
         })
         present(alert, animated: true)
     }
@@ -324,8 +316,7 @@ final class MediaItemEditorViewController: UITableViewController {
         let sheet = UIAlertController(title: "Тип", message: nil, preferredStyle: .actionSheet)
         for kind in MediaItemKind.allCases {
             sheet.addAction(UIAlertAction(title: kind.title, style: .default) { [weak self] _ in
-                self?.item.kind = kind
-                self?.tableView.reloadData()
+                self?.interactor.updateKind(.init(kind: kind))
             })
         }
         sheet.addAction(UIAlertAction(title: "Отмена", style: .cancel))
@@ -336,8 +327,7 @@ final class MediaItemEditorViewController: UITableViewController {
         let sheet = UIAlertController(title: "Статус", message: nil, preferredStyle: .actionSheet)
         for status in MediaWatchStatus.allCases {
             sheet.addAction(UIAlertAction(title: status.title, style: .default) { [weak self] _ in
-                self?.item.status = status
-                self?.tableView.reloadData()
+                self?.interactor.updateStatus(.init(status: status))
             })
         }
         sheet.addAction(UIAlertAction(title: "Отмена", style: .cancel))
@@ -397,6 +387,34 @@ final class MediaItemEditorViewController: UITableViewController {
     }
 }
 
+// MARK: - MediaItemEditorDisplayLogic
+
+extension MediaItemEditorViewController: MediaItemEditorDisplayLogic {
+    func displayContent(_ viewModel: MediaItemEditorModel.Content.ViewModel) {
+        item = viewModel.item
+        title = viewModel.navigationTitle
+        tableView.reloadData()
+    }
+
+    func displayError(_ viewModel: MediaItemEditorModel.ErrorAlert.ViewModel) {
+        let alert = UIAlertController(title: viewModel.title, message: viewModel.message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "Ок", style: .default))
+        present(alert, animated: true)
+    }
+}
+
+// MARK: - MediaItemEditorRoutingLogic
+
+extension MediaItemEditorViewController: MediaItemEditorRoutingLogic {
+    func routeOnSave(item: MediaItem) {
+        onSave(item)
+    }
+
+    func routeBackAfterDelete() {
+        navigationController?.popViewController(animated: true)
+    }
+}
+
 @available(iOS 14.0, *)
 extension MediaItemEditorViewController: PHPickerViewControllerDelegate {
     func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
@@ -408,222 +426,10 @@ extension MediaItemEditorViewController: PHPickerViewControllerDelegate {
                     guard let self, let img = obj as? UIImage, let data = img.jpegData(compressionQuality: 0.88) else { return }
                     do {
                         let name = try MediaLibraryStore.shared.saveCoverJPEG(data)
-                        self.item.coverFileName = name
-                        self.tableView.reloadSections(IndexSet(integer: Section.metadata.rawValue), with: .none)
+                        self.interactor.updateField(.init(field: .coverFileName(name)))
                     } catch {}
                 }
             }
         }
-    }
-}
-
-// MARK: - Ячейка с полем (заголовок слева многострочно по центру строки, поле справа с обрезкой)
-
-private final class TMETextFieldCell: UITableViewCell, UITextFieldDelegate {
-    private let onChange: (String) -> Void
-    let field = UITextField()
-    private let titleView = UILabel()
-
-    init(title: String, value: String, placeholder: String, keyboard: UIKeyboardType, onChange: @escaping (String) -> Void) {
-        self.onChange = onChange
-        super.init(style: .default, reuseIdentifier: nil)
-
-        selectionStyle = .none
-
-        titleView.text = title
-        titleView.font = .preferredFont(forTextStyle: .body)
-        titleView.textColor = .label
-        titleView.numberOfLines = 2
-        titleView.lineBreakMode = .byWordWrapping
-        titleView.adjustsFontForContentSizeCategory = true
-        titleView.setContentHuggingPriority(.required, for: .vertical)
-        titleView.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
-
-        field.text = value
-        field.placeholder = placeholder
-        field.font = .preferredFont(forTextStyle: .body)
-        field.keyboardType = keyboard
-        field.returnKeyType = .done
-        field.textAlignment = .natural
-        field.borderStyle = .none
-        field.backgroundColor = .clear
-        field.contentVerticalAlignment = .center
-        field.clearButtonMode = .whileEditing
-        field.adjustsFontSizeToFitWidth = false
-        field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        field.addTarget(self, action: #selector(changed), for: .editingChanged)
-        field.delegate = self
-
-        contentView.addSubview(titleView)
-        contentView.addSubview(field)
-    }
-
-    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        let bounds = contentView.bounds
-        let marginL = contentView.layoutMargins.left
-        let marginR = contentView.layoutMargins.right
-        let innerW = bounds.width - marginL - marginR
-        let titleMaxW = min(innerW * 0.38, 148)
-        let h = bounds.height
-        let titleSize = titleView.sizeThatFits(CGSize(width: titleMaxW, height: h - 8))
-        let titleW = min(titleMaxW, ceil(titleSize.width))
-        let titleH = min(ceil(titleSize.height), h - 8)
-        titleView.frame = CGRect(x: marginL, y: (h - titleH) / 2, width: titleW, height: titleH)
-
-        let spacing: CGFloat = 8
-        let fieldX = marginL + titleW + spacing
-        let fieldW = max(44, innerW - titleW - spacing)
-        let fieldH = min(40, h - 8)
-        field.frame = CGRect(x: fieldX, y: (h - fieldH) / 2, width: fieldW, height: fieldH)
-    }
-
-    @objc private func changed() {
-        onChange(field.text ?? "")
-    }
-
-    func textFieldShouldReturn(_ textField: UITextField) -> Bool {
-        textField.resignFirstResponder()
-        return true
-    }
-}
-
-// MARK: - Заметка: до 3000 символов, рост по высоте, плейсхолдер по центру
-
-private final class TMETextViewCell: UITableViewCell, UITextViewDelegate {
-    static let defaultNotesMaxLength = 3000
-    static let verticalPadding: CGFloat = 8
-    static let textViewInsets = UIEdgeInsets(top: 10, left: 12, bottom: 10, right: 12)
-
-    private let maxLength: Int
-    private let onChange: (String) -> Void
-    private let placeholder: String
-    private let textView = UITextView()
-    private let placeholderLabel = UILabel()
-
-    weak var hostingTableView: UITableView?
-
-    init(text: String, placeholder: String, maxLength: Int = TMETextViewCell.defaultNotesMaxLength, onChange: @escaping (String) -> Void) {
-        self.maxLength = maxLength
-        self.onChange = onChange
-        self.placeholder = placeholder
-        super.init(style: .default, reuseIdentifier: nil)
-
-        selectionStyle = .none
-
-        textView.font = TMETheme.Fonts.body(16)
-        textView.backgroundColor = .clear
-        textView.delegate = self
-        textView.text = text
-        textView.textContainer.lineFragmentPadding = 0
-        textView.textContainerInset = Self.textViewInsets
-        textView.isScrollEnabled = false
-        textView.textDragInteraction?.isEnabled = true
-        textView.keyboardDismissMode = .interactive
-
-        placeholderLabel.numberOfLines = 0
-        updatePlaceholderAttributed()
-
-        contentView.addSubview(textView)
-        contentView.addSubview(placeholderLabel)
-    }
-
-    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-
-    private func updatePlaceholderAttributed() {
-        let p = NSMutableParagraphStyle()
-        p.alignment = .center
-        placeholderLabel.attributedText = NSAttributedString(
-            string: placeholder,
-            attributes: [
-                .font: TMETheme.Fonts.body(16),
-                .foregroundColor: TMETheme.Colors.secondaryText,
-                .paragraphStyle: p
-            ]
-        )
-    }
-
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        let b = contentView.bounds.insetBy(dx: 0, dy: Self.verticalPadding)
-        textView.frame = b
-        if textView.text.isEmpty {
-            placeholderLabel.isHidden = false
-            let innerW = max(0, b.width - textView.textContainerInset.left - textView.textContainerInset.right)
-            let sz = placeholderLabel.sizeThatFits(CGSize(width: innerW, height: CGFloat.greatestFiniteMagnitude))
-            placeholderLabel.frame = CGRect(
-                x: b.minX + (b.width - min(innerW, sz.width)) / 2,
-                y: b.minY + (b.height - sz.height) / 2,
-                width: min(innerW, sz.width),
-                height: sz.height
-            )
-        } else {
-            placeholderLabel.isHidden = true
-        }
-    }
-
-    func textViewDidChange(_ textView: UITextView) {
-        onChange(textView.text)
-        setNeedsLayout()
-        hostingTableView?.performBatchUpdates({}, completion: nil)
-    }
-
-    func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
-        let current = textView.text ?? ""
-        guard let r = Range(range, in: current) else { return true }
-        let next = current.replacingCharacters(in: r, with: text)
-        return next.count <= maxLength
-    }
-}
-
-private extension UIEdgeInsets {
-    var vertical: CGFloat { top + bottom }
-}
-
-private extension MediaItemEditorViewController {
-    func makeDisclosureCell(title: String, value: String) -> UITableViewCell {
-        let cell = UITableViewCell(style: .value1, reuseIdentifier: nil)
-        cell.textLabel?.text = title
-        cell.textLabel?.numberOfLines = 2
-        cell.textLabel?.lineBreakMode = .byTruncatingTail
-        cell.detailTextLabel?.text = value
-        cell.detailTextLabel?.numberOfLines = 2
-        cell.detailTextLabel?.lineBreakMode = .byTruncatingTail
-        cell.accessoryType = .disclosureIndicator
-        cell.backgroundConfiguration = UIBackgroundConfiguration.listGroupedCell()
-        cell.selectionStyle = .default
-        return cell
-    }
-
-    func makeTextFieldCell(title: String, value: String, placeholder: String, keyboard: UIKeyboardType, onChange: @escaping (String) -> Void) -> UITableViewCell {
-        let cell = TMETextFieldCell(title: title, value: value, placeholder: placeholder, keyboard: keyboard, onChange: onChange)
-        cell.backgroundConfiguration = UIBackgroundConfiguration.listGroupedCell()
-        return cell
-    }
-
-    func makeIntCell(title: String, value: Int?, onChange: @escaping (Int?) -> Void) -> UITableViewCell {
-        makeTextFieldCell(
-            title: title,
-            value: value.map(String.init) ?? "",
-            placeholder: "—",
-            keyboard: .numberPad
-        ) { text in
-            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmed.isEmpty {
-                onChange(nil)
-            } else if let v = Int(trimmed) {
-                onChange(v)
-            }
-            // Невалидный фрагмент (редко с numberPad) — не затираем модель вызовом onChange(nil).
-        }
-    }
-
-    func makeTextViewCell(text: String, placeholder: String, maxLength: Int = TMETextViewCell.defaultNotesMaxLength, onChange: @escaping (String) -> Void) -> UITableViewCell {
-        let cell = TMETextViewCell(text: text, placeholder: placeholder, maxLength: maxLength, onChange: onChange)
-        cell.hostingTableView = tableView
-        cell.backgroundConfiguration = UIBackgroundConfiguration.listGroupedCell()
-        return cell
     }
 }
