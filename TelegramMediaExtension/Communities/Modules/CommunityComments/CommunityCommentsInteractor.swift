@@ -3,6 +3,8 @@ import Foundation
 
 protocol CommunityCommentsBusinessLogic: AnyObject {
     func viewDidLoad(_ request: CommunityCommentsModel.ViewDidLoad.Request)
+    func viewWillAppear()
+    func viewWillDisappear()
     func sendComment(_ request: CommunityCommentsModel.SendComment.Request)
 }
 
@@ -22,6 +24,7 @@ final class CommunityCommentsInteractor: CommunityCommentsBusinessLogic {
 
     private var cancellables = Set<AnyCancellable>()
     private var didEmitInitialComments = false
+    private var realtimeTask: Task<Void, Never>?
 
     init(
         presenter: CommunityCommentsPresentationLogic,
@@ -37,6 +40,37 @@ final class CommunityCommentsInteractor: CommunityCommentsBusinessLogic {
         store.loadIfNeeded()
         bindComments()
         pushCommentsToPresenter(scrollAnimated: false)
+        Task { [weak self] in
+            guard let self else { return }
+            await self.store.refreshComments(messageId: self.rootMessage.id, threadParentCommentId: self.threadParentCommentId)
+        }
+    }
+
+    func viewWillAppear() {
+        startRealtime()
+    }
+
+    func viewWillDisappear() {
+        stopRealtime()
+    }
+
+    private func startRealtime() {
+        guard realtimeTask == nil else { return }
+        realtimeTask = Task { [weak self] in
+            guard let self else { return }
+            while !Task.isCancelled {
+                do {
+                    try await self.store.longPollNewComments(messageId: self.rootMessage.id, threadParentCommentId: self.threadParentCommentId)
+                } catch {
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                }
+            }
+        }
+    }
+
+    private func stopRealtime() {
+        realtimeTask?.cancel()
+        realtimeTask = nil
     }
 
     func sendComment(_ request: CommunityCommentsModel.SendComment.Request) {

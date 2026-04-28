@@ -4,6 +4,11 @@
 <dict>
 	<key>TMDBAPIKey</key>
 	<string>eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJjYTg5NDFlNzBiNTMzNTllYzBhOTI3OTA4NTNiYTkzNiIsIm5iZiI6MTc3NjgwNzA1MC43NjYsInN1YiI6IjY5ZTdlYzhhMDM0YmZjYjYyM2ExY2Y4NCIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.G_b4d1XYLcGm0S-MQyglPkwGcIgr35AsNH8tIsHk6ok</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

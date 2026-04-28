@@ -153,7 +153,13 @@ final class TMESettingsViewController: UIViewController {
             }
         ])
 
-        [block1, myProfileGroup, libraryGroup].forEach { contentStack.addArrangedSubview($0) }
+        let backendGroup = makePillGroup(rows: [
+            makeNavigationRow(icon: "network", title: "Backend URL", detail: BackendAuthStore.shared.baseURL.absoluteString) { [weak self] in
+                self?.presentBackendURLPrompt()
+            }
+        ])
+
+        [block1, myProfileGroup, libraryGroup, backendGroup].forEach { contentStack.addArrangedSubview($0) }
 
         view.addSubview(contentStack)
         NSLayoutConstraint.activate([
@@ -211,6 +217,44 @@ final class TMESettingsViewController: UIViewController {
         row.configure(icon: UIImage(named: icon) ?? UIImage(systemName: icon), iconText: nil, title: title, detail: nil, showsChevron: true)
         row.onTap = onTap
         return row
+    }
+
+    private func makeNavigationRow(icon: String, title: String, detail: String?, onTap: @escaping () -> Void) -> UIView {
+        let row = SettingsRowView()
+        row.configure(icon: UIImage(named: icon) ?? UIImage(systemName: icon), iconText: nil, title: title, detail: detail, showsChevron: true)
+        row.onTap = onTap
+        return row
+    }
+
+    private func presentBackendURLPrompt() {
+        let current = BackendAuthStore.shared.baseURL.absoluteString
+        let ac = UIAlertController(
+            title: "Backend URL",
+            message: "Укажите адрес бекенда.\nДля другого устройства это должен быть IP вашего Mac в сети, например: http://192.168.1.10:8000",
+            preferredStyle: .alert
+        )
+        ac.addTextField { tf in
+            tf.text = current
+            tf.autocapitalizationType = .none
+            tf.autocorrectionType = .no
+            tf.keyboardType = .URL
+            tf.placeholder = "http://<ip>:8000"
+        }
+        ac.addAction(UIAlertAction(title: "Отмена", style: .cancel))
+        ac.addAction(UIAlertAction(title: "Сохранить", style: .default) { [weak self] _ in
+            let raw = (ac.textFields?.first?.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let url = URL(string: raw), url.scheme != nil, url.host != nil else {
+                let err = UIAlertController(title: "Некорректный URL", message: nil, preferredStyle: .alert)
+                err.addAction(UIAlertAction(title: "Ок", style: .default))
+                self?.present(err, animated: true)
+                return
+            }
+            BackendAuthStore.shared.baseURL = url
+            // token remains; backend may differ, user can restart to re-auth if needed.
+            self?.contentStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+            self?.buildContent()
+        })
+        present(ac, animated: true)
     }
 }
 

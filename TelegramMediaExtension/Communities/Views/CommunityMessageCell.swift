@@ -33,6 +33,7 @@ final class CommunityMessageCell: UITableViewCell {
     var onOpenLocation: ((CommunityLocation) -> Void)?
     var onRevealSpoiler: ((UUID) -> Void)?
     private var message: CommunityMessage?
+    private var announcementImageKey: String?
     private var announcementIsSaved = false
     private var spoilerDecision: CommunityChatModel.SpoilerDecision?
     private var spoilerIsRevealed = false
@@ -148,6 +149,7 @@ final class CommunityMessageCell: UITableViewCell {
     override func prepareForReuse() {
         super.prepareForReuse()
         message = nil
+        announcementImageKey = nil
         announcementIsSaved = false
         spoilerDecision = nil
         spoilerIsRevealed = false
@@ -155,6 +157,8 @@ final class CommunityMessageCell: UITableViewCell {
         spoilerOverlay.title = ""
         spoilerOverlay.subtitle = ""
         onRevealSpoiler = nil
+        announcementImageView.image = nil
+        announcementImageView.backgroundColor = .clear
     }
 
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
@@ -236,8 +240,8 @@ final class CommunityMessageCell: UITableViewCell {
 
         let a = message.announcement
         let imgExists: Bool = {
-            guard let name = a?.imageFileName, let u = CommunityStore.announcementImageURL(fileName: name) else { return false }
-            return FileManager.default.fileExists(atPath: u.path)
+            guard let name = a?.imageFileName?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else { return false }
+            return true
         }()
         var y: CGFloat
         if imgExists {
@@ -463,14 +467,31 @@ final class CommunityMessageCell: UITableViewCell {
             bodyLabel.text = (a?.details?.isEmpty == false ? a!.details : message.text)
             timeLabel.text = a.map { Self.dateTime($0.date) } ?? Self.shortTime(message.createdAt)
 
-            if let url = CommunityStore.announcementImageURL(fileName: a?.imageFileName),
-               let data = try? Data(contentsOf: url),
-               let img = UIImage(data: data) {
+            let fileName = a?.imageFileName?.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let fileName, !fileName.isEmpty {
+                announcementImageKey = fileName
                 announcementImageView.isHidden = false
-                announcementImageView.image = img
+                announcementImageView.image = nil
+                announcementImageView.backgroundColor = UIColor.black.withAlphaComponent(0.06)
+                if let cached = AnnouncementImageLoader.shared.cachedImage(fileName: fileName) {
+                    announcementImageView.image = cached
+                    announcementImageView.backgroundColor = .clear
+                } else {
+                    AnnouncementImageLoader.shared.load(fileName: fileName) { [weak self] img in
+                        guard let self else { return }
+                        guard self.announcementImageKey == fileName else { return }
+                        if let img {
+                            self.announcementImageView.image = img
+                            self.announcementImageView.backgroundColor = .clear
+                            self.setNeedsLayout()
+                        }
+                    }
+                }
             } else {
+                announcementImageKey = nil
                 announcementImageView.isHidden = true
                 announcementImageView.image = nil
+                announcementImageView.backgroundColor = .clear
             }
 
             if let link = a?.linkURL?.trimmingCharacters(in: .whitespacesAndNewlines), !link.isEmpty {

@@ -113,6 +113,16 @@ final class CommunityListViewController: UITableViewController, UISearchResultsU
         applyFeedSegmentAppearance()
     }
 
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        interactor.viewWillAppear()
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        interactor.viewWillDisappear()
+    }
+
     private func pinSegmentScrollHorizontalToTableContent() {
         NSLayoutConstraint.deactivate(segmentScrollHorizontalConstraints)
         /// Горизонталь совпадает с безопасной областью таблицы — как проектная ширина поисковой строки под навбаром.
@@ -248,17 +258,29 @@ final class CommunityListViewController: UITableViewController, UISearchResultsU
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: CommunityListCell.reuseId, for: indexPath) as! CommunityListCell
         let row = rows[indexPath.row]
-        cell.configure(community: row.community, preview: row.preview, timeText: row.timeText)
+        cell.configure(
+            community: row.community,
+            preview: row.preview,
+            timeText: row.timeText,
+            previewIsHiddenSpoiler: row.previewIsHiddenSpoiler
+        )
         return cell
     }
 
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
-        let id = rows[indexPath.row].community.id
-        routeToChat(communityId: id)
+        let row = rows[indexPath.row]
+        if row.kind == .discover {
+            // Clear search so the joined community doesn't appear twice.
+            communitySearchController.searchBar.text = ""
+            communitySearchController.isActive = false
+            interactor.updateSearch(CommunityListModel.UpdateSearch.Request(query: ""))
+        }
+        interactor.selectRow(CommunityListModel.SelectRow.Request(row: row))
     }
 
     override func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
+        guard rows[indexPath.row].kind == .member else { return nil }
         let id = rows[indexPath.row].community.id
         let delete = UIContextualAction(style: .destructive, title: "Удалить") { [weak self] _, _, done in
             self?.interactor.deleteCommunity(CommunityListModel.DeleteCommunity.Request(id: id))

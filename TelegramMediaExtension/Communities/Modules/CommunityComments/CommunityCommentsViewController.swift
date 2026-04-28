@@ -223,11 +223,13 @@ final class CommunityCommentsViewController: UIViewController, UITableViewDataSo
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         applyCommentsNavigationAppearance()
+        interactor.viewWillAppear()
     }
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         restoreCommentsNavigationAppearance()
+        interactor.viewWillDisappear()
     }
 
     private func updateInputPillCornerRadius() {

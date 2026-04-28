@@ -25,6 +25,16 @@ enum CommunityChatModel {
         }
     }
 
+    enum InputAvailability {
+        struct Response {
+            let canSendMessages: Bool
+        }
+
+        struct ViewModel {
+            let canSendMessages: Bool
+        }
+    }
+
     enum SendMessage {
         struct Request {
             let text: String

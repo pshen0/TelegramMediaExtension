@@ -20,6 +20,7 @@ final class NewAnnouncementInteractor: NewAnnouncementBusinessLogic {
 
     private let presenter: NewAnnouncementPresentationLogic
     private let store = CommunityStore.shared
+    private let backend = BackendClient.shared
     private let mode: NewAnnouncementModel.Mode
 
     weak var router: NewAnnouncementRoutingLogic?
@@ -78,10 +79,29 @@ final class NewAnnouncementInteractor: NewAnnouncementBusinessLogic {
     }
 
     func savePickedImage(_ request: NewAnnouncementModel.SavePickedImage.Request) {
-        do {
-            imageFileName = try store.saveAnnouncementImageJPEG(request.jpegData)
-            presenter.notifyFormDidChange()
-        } catch {}
+        switch mode {
+        case .community:
+            Task { [weak self] in
+                guard let self else { return }
+                do {
+                    let remoteName = try await backend.uploadAnnouncementImageJPEG(request.jpegData)
+                    store.cacheAnnouncementImage(data: request.jpegData, fileName: remoteName)
+                    self.imageFileName = remoteName
+                    self.presenter.notifyFormDidChange()
+                } catch {
+                    // fallback: local only
+                    do {
+                        self.imageFileName = try store.saveAnnouncementImageJPEG(request.jpegData)
+                        self.presenter.notifyFormDidChange()
+                    } catch {}
+                }
+            }
+        default:
+            do {
+                imageFileName = try store.saveAnnouncementImageJPEG(request.jpegData)
+                presenter.notifyFormDidChange()
+            } catch {}
+        }
     }
 
     func submit(_ request: NewAnnouncementModel.Submit.Request) {

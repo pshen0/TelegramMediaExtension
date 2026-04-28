@@ -103,9 +103,14 @@ final class MediaLibraryListViewController: UITableViewController, UISearchBarDe
             self?.applyBannerChromeColors()
         }
 
-        store.loadIfNeeded()
         bindStore()
         applyFilters()
+
+        Task { [weak self] in
+            guard let self else { return }
+            await self.store.loadIfNeededAsync()
+            self.applyFilters()
+        }
     }
 
     deinit {
@@ -122,7 +127,6 @@ final class MediaLibraryListViewController: UITableViewController, UISearchBarDe
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         applyChromeNavigationAppearance()
-        store.loadIfNeeded()
         applyFilters()
     }
 

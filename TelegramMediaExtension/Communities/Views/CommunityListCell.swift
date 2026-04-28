@@ -10,6 +10,7 @@ final class CommunityListCell: UITableViewCell {
     private let titleLabel = UILabel()
     private let subtitleLabel = UILabel()
     private let timeLabel = UILabel()
+    private let subtitleBaseFont = TMETheme.Fonts.body(15)
 
     static func rowHeight() -> CGFloat {
         let vTop: CGFloat = 8
@@ -65,6 +66,7 @@ final class CommunityListCell: UITableViewCell {
     override func prepareForReuse() {
         super.prepareForReuse()
         usesAvatarPlaceholder = false
+        subtitleLabel.font = subtitleBaseFont
     }
 
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
@@ -79,9 +81,15 @@ final class CommunityListCell: UITableViewCell {
         avatarView.backgroundColor = MediaLibraryHeaderBannerColor.posterPlaceholderFill(for: traitCollection)
     }
 
-    func configure(community: CommunityChat, preview: String, timeText: String) {
+    func configure(community: CommunityChat, preview: String, timeText: String, previewIsHiddenSpoiler: Bool) {
         titleLabel.text = community.title
-        subtitleLabel.text = preview
+        if previewIsHiddenSpoiler {
+            subtitleLabel.text = "Сообщение скрыто"
+            subtitleLabel.font = UIFont.italicSystemFont(ofSize: subtitleBaseFont.pointSize)
+        } else {
+            subtitleLabel.text = preview
+            subtitleLabel.font = subtitleBaseFont
+        }
         timeLabel.text = timeText
         timeLabel.isHidden = timeText.isEmpty
 

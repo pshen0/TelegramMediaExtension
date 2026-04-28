@@ -14,10 +14,17 @@ enum CommunityListModel {
     }
 
     enum List {
+        enum RowKind {
+            case member
+            case discover
+        }
+
         struct Row {
             let community: CommunityChat
             let preview: String
             let timeText: String
+            let kind: RowKind
+            let previewIsHiddenSpoiler: Bool
         }
 
         struct Response {
@@ -38,6 +45,12 @@ enum CommunityListModel {
     enum CreateCommunity {
         struct Request {
             let title: String
+        }
+    }
+
+    enum SelectRow {
+        struct Request {
+            let row: List.Row
         }
     }
 }

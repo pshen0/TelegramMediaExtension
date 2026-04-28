@@ -9,9 +9,12 @@ final class CommunityStore: ObservableObject {
     @Published private(set) var messages: [CommunityMessage] = []
     @Published private(set) var savedAnnouncements: [SavedAnnouncement] = []
     @Published private(set) var comments: [CommunityComment] = []
+    @Published private(set) var membershipRoles: [UUID: String] = [:]
 
+    private let backend = BackendClient.shared
     private let fileURL: URL
     private var isLoaded = false
+    private var didTryBackendBootstrap = false
 
     private struct Persisted: Codable {
         var communities: [CommunityChat]
@@ -43,6 +46,30 @@ final class CommunityStore: ObservableObject {
         let name = UUID().uuidString + ".jpg"
         try data.write(to: Self.announcementImagesDirectoryURL.appendingPathComponent(name), options: [.atomic])
         return name
+    }
+
+    func cacheAnnouncementImage(data: Data, fileName: String) {
+        do {
+            try FileManager.default.createDirectory(at: Self.announcementImagesDirectoryURL, withIntermediateDirectories: true)
+            try data.write(to: Self.announcementImagesDirectoryURL.appendingPathComponent(fileName), options: [.atomic])
+        } catch {
+            // ignore
+        }
+    }
+
+    func ensureAnnouncementImageCached(fileName: String) async {
+        guard let localURL = Self.announcementImageURL(fileName: fileName) else { return }
+        if FileManager.default.fileExists(atPath: localURL.path) { return }
+        do {
+            let url = BackendAuthStore.shared.baseURL
+                .appendingPathComponent("media", isDirectory: true)
+                .appendingPathComponent("announcement-images", isDirectory: true)
+                .appendingPathComponent(fileName)
+            let (data, _) = try await URLSession.shared.data(from: url)
+            cacheAnnouncementImage(data: data, fileName: fileName)
+        } catch {
+            // ignore
+        }
     }
 
     // MARK: - Community avatars
@@ -89,6 +116,152 @@ final class CommunityStore: ObservableObject {
         guard !isLoaded else { return }
         isLoaded = true
         reloadFromDisk()
+        bootstrapBackendIfPossible()
+    }
+
+    func loadIfNeededAsync() async {
+        guard !isLoaded else { return }
+        isLoaded = true
+        let url = fileURL
+        let decoded: Persisted? = await Task.detached(priority: .utility) {
+            do {
+                let data = try Data(contentsOf: url)
+                let decoder = JSONDecoder()
+                decoder.dateDecodingStrategy = .iso8601
+                return try decoder.decode(Persisted.self, from: data)
+            } catch {
+                return nil
+            }
+        }.value
+        if let decoded {
+            communities = decoded.communities.sorted { $0.updatedAt > $1.updatedAt }
+            messages = decoded.messages.sorted { $0.createdAt < $1.createdAt }
+            savedAnnouncements = decoded.savedAnnouncements.sorted { $0.date < $1.date }
+            comments = decoded.comments.sorted { $0.createdAt < $1.createdAt }
+        } else {
+            communities = []
+            messages = []
+            savedAnnouncements = []
+            comments = []
+        }
+        bootstrapBackendIfPossible()
+    }
+
+    private func bootstrapBackendIfPossible() {
+        guard !didTryBackendBootstrap else { return }
+        didTryBackendBootstrap = true
+        Task { [weak self] in
+            guard let self else { return }
+            await backend.ensureAuthed()
+            await self.refreshCommunities()
+        }
+    }
+
+    // MARK: - Backend sync
+
+    func refreshCommunities() async {
+        do {
+            let remote = try await backend.listCommunities()
+            communities = remote.sorted { $0.updatedAt > $1.updatedAt }
+            persist()
+        } catch {
+            // Keep local cache.
+        }
+    }
+
+    func longPollMyCommunities() async throws {
+        let since = communities.map(\.updatedAt).max()
+        let remote = try await backend.longPollMyCommunities(since: since, timeoutSeconds: 25)
+        guard !remote.isEmpty else { return }
+        for c in remote {
+            upsertCommunity(c)
+            // Keep list preview fresh: pull new messages/comments for changed communities.
+            await refreshNewMessages(communityId: c.id)
+            if let lastMsg = lastMessage(for: c.id) {
+                await refreshComments(messageId: lastMsg.id, threadParentCommentId: nil)
+            }
+        }
+        communities.sort { $0.updatedAt > $1.updatedAt }
+        persist()
+    }
+
+    func refreshMyMembershipRole(communityId: UUID) async {
+        do {
+            let m = try await backend.myMembership(communityId: communityId)
+            membershipRoles[communityId] = m.role
+        } catch {
+            // Not joined or offline.
+            membershipRoles.removeValue(forKey: communityId)
+        }
+    }
+
+    func canSendMessages(in communityId: UUID) -> Bool {
+        // Block input only when we know the user is a reader.
+        // For "unknown" (not fetched yet / transient), keep input visible; backend still enforces permissions.
+        membershipRoles[communityId] != "reader"
+    }
+
+    func refreshMessages(communityId: UUID) async {
+        do {
+            let remote = try await backend.listMessages(communityId: communityId, after: nil, limit: 200)
+            // Replace messages for this community, keep others.
+            messages.removeAll(where: { $0.communityId == communityId })
+            messages.append(contentsOf: remote)
+            messages.sort { $0.createdAt < $1.createdAt }
+            touchCommunity(communityId)
+            persist()
+        } catch {
+            // Keep local cache.
+        }
+    }
+
+    /// Incrementally fetch new messages from backend.
+    func refreshNewMessages(communityId: UUID) async {
+        let last = messages(for: communityId).last?.createdAt
+        do {
+            let remote = try await backend.listMessages(communityId: communityId, after: last, limit: 200)
+            guard !remote.isEmpty else { return }
+
+            let existingIds = Set(messages.filter { $0.communityId == communityId }.map(\.id))
+            let fresh = remote.filter { !existingIds.contains($0.id) }
+            guard !fresh.isEmpty else { return }
+
+            messages.append(contentsOf: fresh)
+            messages.sort { $0.createdAt < $1.createdAt }
+            touchCommunity(communityId)
+            persist()
+        } catch {
+            // ignore
+        }
+    }
+
+    /// Waits until backend has new messages (or timeout), then merges them.
+    func longPollNewMessages(communityId: UUID) async throws {
+        let last = messages(for: communityId).last?.createdAt
+        let remote = try await backend.longPollMessages(communityId: communityId, after: last, timeoutSeconds: 25, limit: 200)
+        guard !remote.isEmpty else { return }
+
+        let existingIds = Set(messages.filter { $0.communityId == communityId }.map(\.id))
+        let fresh = remote.filter { !existingIds.contains($0.id) }
+        guard !fresh.isEmpty else { return }
+
+        messages.append(contentsOf: fresh)
+        messages.sort { $0.createdAt < $1.createdAt }
+        touchCommunity(communityId)
+        persist()
+    }
+
+    func refreshComments(messageId: UUID, threadParentCommentId: UUID?) async {
+        do {
+            let remote = try await backend.listComments(messageId: messageId, threadParentCommentId: threadParentCommentId, limit: 500)
+            // Replace comments for that thread only.
+            comments.removeAll(where: { $0.messageId == messageId && $0.threadParentCommentId == threadParentCommentId })
+            comments.append(contentsOf: remote)
+            comments.sort { $0.createdAt < $1.createdAt }
+            persist()
+        } catch {
+            // Keep local cache.
+        }
     }
 
     func reloadFromDisk() {
@@ -114,7 +287,18 @@ final class CommunityStore: ObservableObject {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let c = CommunityChat(title: trimmed.isEmpty ? "Сообщество" : trimmed)
         communities.insert(c, at: 0)
+        membershipRoles[c.id] = "publisher"
         persist()
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                _ = try await backend.createCommunity(id: c.id, title: c.title, catalogSourceID: c.catalogSourceID)
+                await self.refreshCommunities()
+                await self.refreshMyMembershipRole(communityId: c.id)
+            } catch {
+                // ignore: offline / dev
+            }
+        }
         return c
     }
 
@@ -137,6 +321,49 @@ final class CommunityStore: ObservableObject {
         communities[i].title = t
         communities[i].updatedAt = Date()
         persist()
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                _ = try await backend.updateCommunityTitle(communityId: communityId, title: t)
+                await self.refreshCommunities()
+            } catch {
+                // ignore
+            }
+        }
+    }
+
+    func longPollCommunityMeta(communityId: UUID) async throws {
+        let since = communities.first(where: { $0.id == communityId })?.updatedAt
+        if let updated = try await backend.longPollCommunityMeta(communityId: communityId, since: since, timeoutSeconds: 25) {
+            upsertCommunity(updated)
+        }
+    }
+
+    func longPollNewComments(messageId: UUID, threadParentCommentId: UUID?) async throws {
+        let last = comments(for: messageId, threadParentCommentId: threadParentCommentId).last?.createdAt
+        let remote = try await backend.longPollComments(
+            messageId: messageId,
+            threadParentCommentId: threadParentCommentId,
+            after: last,
+            timeoutSeconds: 25,
+            limit: 500
+        )
+        guard !remote.isEmpty else { return }
+
+        let existingIds = Set(
+            comments
+                .filter { $0.messageId == messageId && $0.threadParentCommentId == threadParentCommentId }
+                .map(\.id)
+        )
+        let fresh = remote.filter { !existingIds.contains($0.id) }
+        guard !fresh.isEmpty else { return }
+
+        comments.append(contentsOf: fresh)
+        comments.sort { $0.createdAt < $1.createdAt }
+        if let communityId = messages.first(where: { $0.id == messageId })?.communityId {
+            touchCommunity(communityId)
+        }
+        persist()
     }
 
     func deleteCommunity(id: UUID) {
@@ -152,6 +379,9 @@ final class CommunityStore: ObservableObject {
             comments.removeAll(where: { set.contains($0.messageId) })
         }
         persist()
+        Task {
+            try? await backend.deleteCommunity(id: id)
+        }
     }
 
     func messages(for communityId: UUID) -> [CommunityMessage] {
@@ -165,6 +395,10 @@ final class CommunityStore: ObservableObject {
 
     func listPreviewText(for communityId: UUID) -> String {
         guard let m = lastMessage(for: communityId) else { return "Нет сообщений" }
+        // If there are comments on the latest message, show last comment as the preview.
+        if let lastComment = comments.filter({ $0.messageId == m.id && $0.threadParentCommentId == nil }).last {
+            return lastComment.text
+        }
         switch m.kind {
         case .post:
             return m.text
@@ -189,8 +423,23 @@ final class CommunityStore: ObservableObject {
         loadIfNeeded()
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !t.isEmpty else { return }
-        comments.append(CommunityComment(messageId: messageId, threadParentCommentId: threadParentCommentId, text: t))
+        let local = CommunityComment(messageId: messageId, threadParentCommentId: threadParentCommentId, text: t)
+        comments.append(local)
         persist()
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                _ = try await backend.createComment(messageId: messageId, id: local.id, threadParentCommentId: threadParentCommentId, text: t)
+                await self.refreshComments(messageId: messageId, threadParentCommentId: threadParentCommentId)
+                // bump community ordering/preview
+                if let communityId = self.messages.first(where: { $0.id == messageId })?.communityId {
+                    self.touchCommunity(communityId)
+                    self.persist()
+                }
+            } catch {
+                // ignore
+            }
+        }
     }
 
     func addPost(communityId: UUID, text: String, spoilerTags: [CommunitySpoilerTag] = []) {
@@ -201,6 +450,15 @@ final class CommunityStore: ObservableObject {
         messages.append(m)
         touchCommunity(communityId)
         persist()
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                _ = try await backend.createPost(communityId: communityId, id: m.id, text: t, spoilerTags: spoilerTags)
+                await self.refreshMessages(communityId: communityId)
+            } catch {
+                // ignore
+            }
+        }
     }
 
     func addAnnouncement(
@@ -233,6 +491,15 @@ final class CommunityStore: ObservableObject {
         messages.append(m)
         touchCommunity(communityId)
         persist()
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                _ = try await backend.createAnnouncement(communityId: communityId, id: m.id, text: m.text, announcement: a)
+                await self.refreshMessages(communityId: communityId)
+            } catch {
+                // ignore
+            }
+        }
     }
 
     /// Создаёт личный анонс (без привязки к сообществу) в разделе «Мои анонсы».

@@ -23,6 +23,7 @@ final class AnnouncementsChromeListInteractor: AnnouncementsChromeListBusinessLo
 
     private var cancellables = Set<AnyCancellable>()
     private var query: String = ""
+    private var didBindStore = false
 
     init(presenter: AnnouncementsChromeListPresentationLogic, searchScope: AnnouncementsChromeListModel.SearchScope) {
         self.presenter = presenter
@@ -30,13 +31,20 @@ final class AnnouncementsChromeListInteractor: AnnouncementsChromeListBusinessLo
     }
 
     func viewDidLoad(_ request: AnnouncementsChromeListModel.ViewDidLoad.Request) {
-        store.loadIfNeeded()
-        bindStore()
-        applyFilterAndPresent()
+        Task { [weak self] in
+            guard let self else { return }
+            await self.store.loadIfNeededAsync()
+            self.bindStoreIfNeeded()
+            self.applyFilterAndPresent()
+        }
     }
 
     func viewWillAppear() {
-        store.loadIfNeeded()
+        Task { [weak self] in
+            guard let self else { return }
+            await self.store.loadIfNeededAsync()
+            self.applyFilterAndPresent()
+        }
         applyFilterAndPresent()
     }
 
@@ -55,7 +63,9 @@ final class AnnouncementsChromeListInteractor: AnnouncementsChromeListBusinessLo
         router?.routeToDetail(a)
     }
 
-    private func bindStore() {
+    private func bindStoreIfNeeded() {
+        guard !didBindStore else { return }
+        didBindStore = true
         store.$savedAnnouncements
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in

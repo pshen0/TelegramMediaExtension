@@ -29,6 +29,21 @@ final class MediaLibraryStore: ObservableObject {
         }
     }
 
+    func loadIfNeededAsync() async {
+        guard !isLoaded else { return }
+        isLoaded = true
+        let url = fileURL
+        let decoded: [MediaItem] = await Task.detached(priority: .utility) {
+            do {
+                let data = try Data(contentsOf: url)
+                return try JSONDecoder().decode([MediaItem].self, from: data)
+            } catch {
+                return []
+            }
+        }.value
+        self.items = decoded.sorted(by: { $0.updatedAt > $1.updatedAt })
+    }
+
     /// Принудительно перечитать с диска (если данные могли измениться извне).
     func reloadFromDisk() {
         isLoaded = true
@@ -39,6 +54,20 @@ final class MediaLibraryStore: ObservableObject {
         } catch {
             self.items = []
         }
+    }
+
+    func reloadFromDiskAsync() async {
+        isLoaded = true
+        let url = fileURL
+        let decoded: [MediaItem] = await Task.detached(priority: .utility) {
+            do {
+                let data = try Data(contentsOf: url)
+                return try JSONDecoder().decode([MediaItem].self, from: data)
+            } catch {
+                return []
+            }
+        }.value
+        self.items = decoded.sorted(by: { $0.updatedAt > $1.updatedAt })
     }
 
     func item(id: UUID) -> MediaItem? {

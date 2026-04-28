@@ -3,6 +3,8 @@ import Foundation
 
 protocol CommunityChatBusinessLogic: AnyObject {
     func viewDidLoad(_ request: CommunityChatModel.ViewDidLoad.Request)
+    func viewWillAppear()
+    func viewWillDisappear()
     func sendMessage(_ request: CommunityChatModel.SendMessage.Request)
     func spoilerDecision(for message: CommunityMessage) -> CommunityChatModel.SpoilerDecision?
     func announcementIsSaved(for message: CommunityMessage) -> Bool
@@ -29,6 +31,8 @@ final class CommunityChatInteractor: CommunityChatBusinessLogic {
 
     private var cancellables = Set<AnyCancellable>()
     private var didPresentInitialMessages = false
+    private var messagesTask: Task<Void, Never>?
+    private var metaTask: Task<Void, Never>?
 
     init(presenter: CommunityChatPresentationLogic, communityId: UUID) {
         self.presenter = presenter
@@ -39,6 +43,54 @@ final class CommunityChatInteractor: CommunityChatBusinessLogic {
         store.loadIfNeeded()
         bindStores()
         pushTitleToPresenter()
+        Task { [weak self] in
+            guard let self else { return }
+            await self.store.refreshMessages(communityId: self.communityId)
+            await self.store.refreshMyMembershipRole(communityId: self.communityId)
+            self.pushInputAvailabilityToPresenter()
+        }
+    }
+
+    func viewWillAppear() {
+        startRealtime()
+    }
+
+    func viewWillDisappear() {
+        stopRealtime()
+    }
+
+    private func startRealtime() {
+        guard messagesTask == nil, metaTask == nil else { return }
+
+        messagesTask = Task { [weak self] in
+            guard let self else { return }
+            while !Task.isCancelled {
+                do {
+                    try await self.store.longPollNewMessages(communityId: self.communityId)
+                } catch {
+                    // Backoff on network errors.
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                }
+            }
+        }
+
+        metaTask = Task { [weak self] in
+            guard let self else { return }
+            while !Task.isCancelled {
+                do {
+                    try await self.store.longPollCommunityMeta(communityId: self.communityId)
+                } catch {
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                }
+            }
+        }
+    }
+
+    private func stopRealtime() {
+        messagesTask?.cancel()
+        metaTask?.cancel()
+        messagesTask = nil
+        metaTask = nil
     }
 
     func sendMessage(_ request: CommunityChatModel.SendMessage.Request) {
@@ -91,6 +143,13 @@ final class CommunityChatInteractor: CommunityChatBusinessLogic {
             }
             .store(in: &cancellables)
 
+        store.$membershipRoles
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.pushInputAvailabilityToPresenter()
+            }
+            .store(in: &cancellables)
+
         mediaStore.$items
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
@@ -116,6 +175,12 @@ final class CommunityChatInteractor: CommunityChatBusinessLogic {
     private func pushTitleToPresenter() {
         let title = store.communities.first(where: { $0.id == communityId })?.title ?? "Сообщество"
         presenter.presentCommunityTitle(CommunityChatModel.NavigationTitle.Response(title: title))
+    }
+
+    private func pushInputAvailabilityToPresenter() {
+        presenter.presentInputAvailability(
+            CommunityChatModel.InputAvailability.Response(canSendMessages: store.canSendMessages(in: communityId))
+        )
     }
 
     private func tagIsAheadOfProgress(tag: CommunitySpoilerTag, item: MediaItem) -> Bool {

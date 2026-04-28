@@ -39,6 +39,7 @@ final class CommunityChatViewController: UIViewController, UITableViewDataSource
     private var messages: [CommunityMessage] = []
     private var pendingSpoilerTags: [CommunitySpoilerTag] = []
     private var revealedSpoilerMessageIds = Set<UUID>()
+    private var canSendMessages = true
     private var mediaLibraryChromeObserver: NSObjectProtocol?
     private var keyboardFrameObserver: NSObjectProtocol?
     private var keyboardHideObserver: NSObjectProtocol?
@@ -222,6 +223,15 @@ final class CommunityChatViewController: UIViewController, UITableViewDataSource
         }
     }
 
+    private func applyInputAvailability() {
+        if !canSendMessages, inputField.isFirstResponder {
+            inputField.resignFirstResponder()
+        }
+        inputContainer.isHidden = !canSendMessages
+        navigationItem.rightBarButtonItem?.isEnabled = canSendMessages
+        updateChatTableBottomInset(keyboardOverlap: nil, adjustScroll: true)
+    }
+
     private func animateWithKeyboardNotification(
         _ note: Notification,
         animations: @escaping () -> Void,
@@ -373,11 +383,13 @@ final class CommunityChatViewController: UIViewController, UITableViewDataSource
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         applyChatNavigationAppearance()
+        interactor.viewWillAppear()
     }
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         restoreChatNavigationAppearance()
+        interactor.viewWillDisappear()
     }
 
     /// Как список «Сообщества»: контент уходит под навбар и виден через размытие, а не под сплошную подложку.
@@ -504,6 +516,7 @@ final class CommunityChatViewController: UIViewController, UITableViewDataSource
     }
 
     @objc private func sendTapped() {
+        guard canSendMessages else { return }
         let text = (inputField.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         interactor.sendMessage(CommunityChatModel.SendMessage.Request(text: text, spoilerTags: pendingSpoilerTags))
@@ -751,6 +764,11 @@ extension CommunityChatViewController: CommunityChatDisplayLogic {
 
     func displayNavigationTitle(_ title: String) {
         self.title = title
+    }
+
+    func displayInputAvailability(_ viewModel: CommunityChatModel.InputAvailability.ViewModel) {
+        canSendMessages = viewModel.canSendMessages
+        applyInputAvailability()
     }
 
     func reloadCellsForDependentStores() {
